@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TankWar", "RobotWar\RobotWar\TankWar.csproj", "{C51FDBA4-C65B-4646-9547-D156064B5643}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RobotWarContent", "RobotWar\RobotWarContent\RobotWarContent.contentproj", "{14773E7E-1245-46F9-8156-E5BE67511464}"
+EndProject
+Global
+	GlobalSection(SubversionScc) = preSolution
+		Svn-Managed = True
+		Manager = AnkhSVN - Subversion Support for Visual Studio
+	EndGlobalSection
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C51FDBA4-C65B-4646-9547-D156064B5643}.Debug|x86.ActiveCfg = Debug|x86
+		{C51FDBA4-C65B-4646-9547-D156064B5643}.Debug|x86.Build.0 = Debug|x86
+		{C51FDBA4-C65B-4646-9547-D156064B5643}.Release|x86.ActiveCfg = Release|x86
+		{C51FDBA4-C65B-4646-9547-D156064B5643}.Release|x86.Build.0 = Release|x86
+		{14773E7E-1245-46F9-8156-E5BE67511464}.Debug|x86.ActiveCfg = Debug|x86
+		{14773E7E-1245-46F9-8156-E5BE67511464}.Release|x86.ActiveCfg = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
