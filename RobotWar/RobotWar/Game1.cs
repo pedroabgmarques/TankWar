@@ -81,7 +81,7 @@ namespace RobotWar
             graphics.PreferredBackBufferWidth = 1366;
             graphics.PreferredBackBufferHeight = 768;
             graphics.PreferMultiSampling = false;
-            graphics.IsFullScreen = false;
+            graphics.IsFullScreen = true;
         }
 
         /// <summary>
