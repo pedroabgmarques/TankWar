@@ -16,7 +16,7 @@ namespace RobotWar
         vida
     }
     
-    class PowerUp
+    public class PowerUp
     {
         Texture2D textura, double_turn, mega_power, double_shot, sniper, vida;
         Vector2 posicao;

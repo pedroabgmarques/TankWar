@@ -13,7 +13,7 @@ namespace RobotWar
         public Vector2 posicao_destino;
         public int power, power_anterior;
         public int vida;
-        public equipa equipa;
+        public Team equipa;
         public Vector2 posicao_grelha;
         static public float escala=0.5f;
         public int ID;
@@ -54,7 +54,7 @@ namespace RobotWar
         }
         #endregion
 
-        public void Initialiazing(Texture2D textura, Vector2 posicao, SpriteEffects efeito, equipa equipa,Random gerador_numeros, int ID)
+        public void Initialiazing(Texture2D textura, Vector2 posicao, SpriteEffects efeito, Team equipa,Random gerador_numeros, int ID)
         {
             this.textura = textura;
             this.posicao = posicao;
@@ -209,7 +209,7 @@ namespace RobotWar
         #endregion
 
         #region Mover tanque
-        private void Mover(List<Tank> lista_tanques, equipa equipa_activa, ContentManager Content)
+        private void Mover(List<Tank> lista_tanques, Team equipa_activa, ContentManager Content)
         {
             if (Math.Round(posicao.X) != Math.Round(posicao_destino.X) || Math.Round(posicao.Y) != Math.Round(posicao_destino.Y))
             {
@@ -277,11 +277,11 @@ namespace RobotWar
         }
         #endregion
 
-        public void Update(GameTime gameTime, List<Tank> lista_tanques, equipa equipa_activa, ContentManager Content)
+        public void Update(GameTime gameTime, List<Tank> lista_tanques, Team equipa_activa, ContentManager Content)
         {
             if (this.pode_mover) cor = Color.White;
-            if (this.equipa == equipa.Coalition) rodarCoalition();
-            if (this.equipa == equipa.Alliance) rodarAlliance();
+            if (this.equipa == Team.Coalition) rodarCoalition();
+            if (this.equipa == Team.Alliance) rodarAlliance();
             Mover(lista_tanques, equipa_activa, Content);
         }
 
@@ -314,7 +314,7 @@ namespace RobotWar
             float x_vida = vida_200.Width / 2;
             float y_vida = vida_200.Height / 2;
             Vector2 centro_rotacao_vida = new Vector2(x_vida, y_vida);
-            if (this.equipa == equipa.Alliance)
+            if (this.equipa == Team.Alliance)
             {
                 efeito_vida = SpriteEffects.FlipVertically;
             }

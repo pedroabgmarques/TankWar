@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Content;
 
+
 namespace RobotWar
 {
     public class Turnbox
@@ -11,7 +12,7 @@ namespace RobotWar
 
         Texture2D textura, textura_alliance, textura_coalition, textura_proximo;
         SpriteFont font, arial_12, tahoma_20, tahoma_20_bold;
-        equipa equipa;
+        Team equipa;
         public bool activo;
         static public float largura = 295, altura = 155;
         float transparencia;
@@ -19,7 +20,7 @@ namespace RobotWar
         int n_tanques,n_prontos;
         bool game_over;
 
-        public void Initializing(equipa equipa, int n_tanques, int n_prontos, bool game_over)
+        public void Initializing(Team equipa, int n_tanques, int n_prontos, bool game_over)
         {
             this.activo = true;
             this.transparencia = 1f;
@@ -57,7 +58,7 @@ namespace RobotWar
         public void Update()
         {
 
-            if (this.equipa == equipa.Alliance)
+            if (this.equipa == Team.Alliance)
             {
                 textura_proximo = textura_alliance;
             }

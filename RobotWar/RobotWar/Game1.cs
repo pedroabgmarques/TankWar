@@ -8,19 +8,12 @@ using Microsoft.Xna.Framework.GamerServices;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Media;
+using System.Net.Sockets;
+using System.Threading;
+using System.Text;
 
 namespace RobotWar
 {
-    /// <summary>
-    /// This is the main type for your game
-    /// </summary>
-    /// 
-
-    public enum equipa
-    {
-        Alliance,
-        Coalition
-    }
 
     public enum direccao
     {
@@ -70,9 +63,13 @@ namespace RobotWar
         public static int turnos;
 
         //equipa activa
-        static equipa equipa_activa;
+        static Team equipa_activa;
 
-        
+        //Network:
+        TcpClient client;
+        NetworkStream clientStream;
+        Thread waitForServerMessages;
+        Thread processMessage;
 
         public Game1()
         {
@@ -80,8 +77,8 @@ namespace RobotWar
             Content.RootDirectory = "Content";
             graphics.PreferredBackBufferWidth = 1366;
             graphics.PreferredBackBufferHeight = 768;
-            graphics.PreferMultiSampling = false;
-            graphics.IsFullScreen = true;
+            graphics.PreferMultiSampling = true;
+            graphics.IsFullScreen = false;
         }
 
         /// <summary>
@@ -113,12 +110,96 @@ namespace RobotWar
             int n_aleatorio = gerador_numeros.Next(2);
             if (n_aleatorio == 0)
             {
-                equipa_activa = equipa.Alliance;
+                equipa_activa = Team.Alliance;
             }
-            else { equipa_activa = equipa.Coalition; }
+            else { equipa_activa = Team.Coalition; }
+
+            //Network
+            ConnectToServer("localhost", 7777);
 
             base.Initialize();
         }
+
+        #region Network
+        private void ConnectToServer(string servidor, int porto)
+        {
+            client = new TcpClient();
+            client.Connect(servidor, porto);
+            clientStream = client.GetStream();
+
+            //thread que fica a aguardar comunicações iniciadas pelo servidor
+            waitForServerMessages = new Thread(new ParameterizedThreadStart(ReceiveServerMessage));
+            waitForServerMessages.IsBackground = true;
+            waitForServerMessages.Start(clientStream);
+        }
+
+        private void ReceiveServerMessage(object clientStream)
+        {
+
+            while (true)
+            {
+                NetworkStream stream = (NetworkStream)clientStream;
+                byte[] message = new byte[4096];
+                int bytesRead;
+
+                while (true)
+                {
+                    bytesRead = 0;
+
+                    try
+                    {
+                        //blocks until a client sends a message
+                        bytesRead = stream.Read(message, 0, 4096);
+                    }
+                    catch
+                    {
+                        //a socket error has occured
+                        break;
+                    }
+
+                    if (bytesRead == 0)
+                    {
+                        //the client has disconnected from the server
+                        break;
+                    }
+
+                    //message has successfully been received
+                    ASCIIEncoding encoder = new ASCIIEncoding();
+
+                    string mensagem = encoder.GetString(message, 0, bytesRead);
+
+                    //cria nova thread para processar o conteudo da mensagem
+                    processMessage = new Thread(new ParameterizedThreadStart(ProcessServerMessage));
+                    processMessage.IsBackground = true;
+                    processMessage.Start(mensagem);
+
+                }
+            }
+        }
+
+        private void ProcessServerMessage(object mens)
+        {
+            string message = (string)mens;
+            Console.WriteLine("Mensagem do servidor: "+ message);
+        }
+
+        private void SendMessageToServer(string message)
+        {
+            try
+            {
+                ASCIIEncoding encoder = new ASCIIEncoding();
+                byte[] buffer = encoder.GetBytes(message);
+
+                clientStream.Write(buffer, 0, buffer.Length);
+                clientStream.Flush();
+            }
+            catch
+            {
+                Console.WriteLine("Erro no envio de mensagem para o servidor!");
+            }
+        }
+
+        #endregion
 
         #region Gerar tanques1
         private void gerarTanques1()
@@ -146,7 +227,7 @@ namespace RobotWar
                 tank.posicao_grelha = new Vector2(0f, i);
                 
                 
-                tank.Initialiazing(textura_tanque1, posicao_tanque1, SpriteEffects.FlipVertically, equipa.Alliance,gerador_numeros,i);
+                tank.Initialiazing(textura_tanque1, posicao_tanque1, SpriteEffects.FlipVertically, Team.Alliance,gerador_numeros,i);
                 lista_tanques.Add(tank);
             }
         }
@@ -177,7 +258,7 @@ namespace RobotWar
                 tank.posicao_grelha = new Vector2(10f, i);
                 
 
-                tank.Initialiazing(textura_tanque2, posicao_tanque2,SpriteEffects.None,equipa.Coalition,gerador_numeros,i);
+                tank.Initialiazing(textura_tanque2, posicao_tanque2,SpriteEffects.None, Team.Coalition,gerador_numeros,i);
                 lista_tanques.Add(tank);
             }
         }
@@ -296,10 +377,6 @@ namespace RobotWar
         }
         #endregion
 
-        /// <summary>
-        /// LoadContent will be called once per game and is the place to load
-        /// all of your content.
-        /// </summary>
         protected override void LoadContent()
         {
             // Create a new SpriteBatch, which can be used to draw textures.
@@ -364,10 +441,6 @@ namespace RobotWar
             
         }
 
-        /// <summary>
-        /// UnloadContent will be called once per game and is the place to unload
-        /// all content.
-        /// </summary>
         protected override void UnloadContent()
         {
             spriteBatch.Dispose();
@@ -386,18 +459,28 @@ namespace RobotWar
             {
                 tanque.UnloadContent();
             }
+
         }
 
-        /// <summary>
-        /// Allows the game to run logic such as updating the world,
-        /// checking for collisions, gathering input, and playing audio.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
+        private void CloseNetworkStuffOnExit()
+        {
+            client.Close();
+            clientStream.Dispose();
+            waitForServerMessages.Abort();
+            waitForServerMessages.Join();
+            processMessage.Abort();
+            processMessage.Join();
+        }
+
         protected override void Update(GameTime gameTime)
         {
             // Allows the game to exit
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
+            {
+                CloseNetworkStuffOnExit();
                 this.Exit();
+            }
+                
 
             KeyboardState teclado = Keyboard.GetState();
 
@@ -446,13 +529,13 @@ namespace RobotWar
 
         private void actualizarGameOver()
         {
-            if (numeroTanquesActivosEquipa(lista_tanques, equipa.Alliance) == 0)
+            if (numeroTanquesActivosEquipa(lista_tanques, Team.Alliance) == 0)
             {
-                turnBox.Initializing(equipa.Coalition, numeroTanquesActivosEquipa(lista_tanques, equipa.Coalition), numeroTanquesProntosEquipa(lista_tanques, equipa.Coalition),true);
+                turnBox.Initializing(Team.Coalition, numeroTanquesActivosEquipa(lista_tanques, Team.Coalition), numeroTanquesProntosEquipa(lista_tanques, Team.Coalition), true);
             }
-            if (numeroTanquesActivosEquipa(lista_tanques, equipa.Coalition) == 0)
+            if (numeroTanquesActivosEquipa(lista_tanques, Team.Coalition) == 0)
             {
-                turnBox.Initializing(equipa.Alliance, numeroTanquesActivosEquipa(lista_tanques, equipa.Alliance), numeroTanquesProntosEquipa(lista_tanques, equipa.Alliance), true);
+                turnBox.Initializing(Team.Alliance, numeroTanquesActivosEquipa(lista_tanques, Team.Alliance), numeroTanquesProntosEquipa(lista_tanques, Team.Alliance), true);
             }
         }
 
@@ -530,9 +613,9 @@ namespace RobotWar
                 Terreno terreno = verificarRatoTerrenoMover(posicao_rato);
                 //foi clicada uma posição de andamento válida
                 apontador = seta_rato_esperar;
-                if (tanque_seleccionado.equipa == equipa.Coalition) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(
+                if (tanque_seleccionado.equipa == Team.Coalition) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(
                     new Vector2(terreno.posicao.X + terreno.largura / 4, terreno.posicao.Y + terreno.altura / 4), 0f);
-                if (tanque_seleccionado.equipa == equipa.Alliance) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(
+                if (tanque_seleccionado.equipa == Team.Alliance) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(
                     new Vector2(terreno.posicao.X + terreno.largura / 4, terreno.posicao.Y + terreno.altura / 4), MathHelper.Pi);
                 //mandar o tanque andar
                 tanque_seleccionado.alterarPosicaoDestino(new Vector2(terreno.posicao.X + terreno.largura / 8, terreno.posicao.Y), terreno_pode_mover, tanque_seleccionado);
@@ -588,13 +671,13 @@ namespace RobotWar
         {
             turnos++;
             jogadas = 0;
-            if (equipa_activa == equipa.Alliance)
+            if (equipa_activa == Team.Alliance)
             {
-                equipa_activa = equipa.Coalition;
+                equipa_activa = Team.Coalition;
             }
             else
             {
-                equipa_activa = equipa.Alliance;
+                equipa_activa = Team.Alliance;
             }
 
             //Actualizar os tanques que estiverem à espera para disparar
@@ -623,7 +706,7 @@ namespace RobotWar
         }
 
         #region Calcular numero de tanques activos de uma equipa
-        static public int numeroTanquesActivosEquipa(List<Tank> lista_tanques, equipa equipa_activa)
+        static public int numeroTanquesActivosEquipa(List<Tank> lista_tanques, Team equipa_activa)
         {
             int n_tanques=0;
             foreach (Tank tanque in lista_tanques)
@@ -638,7 +721,7 @@ namespace RobotWar
         #endregion
 
         #region Calcular numero de tanques prontos a disparar de uma equipa
-        static public int numeroTanquesProntosEquipa(List<Tank> lista_tanques, equipa equipa_activa)
+        static public int numeroTanquesProntosEquipa(List<Tank> lista_tanques, Team equipa_activa)
         {
             int n_tanques = 0;
             foreach (Tank tanque in lista_tanques)
@@ -718,8 +801,8 @@ namespace RobotWar
                     //verificar se há um seleccionado e se o tanque apontado é da equipa adversária
                     if (tanque_seleccionado != null && tanque_seleccionado.equipa != verificarRatoTanque().equipa && tanque_seleccionado.turnos_espera_disparar == 0)
                     {
-                        if (tanque_seleccionado.equipa == equipa.Coalition) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(posicao_rato, 0f);
-                        if (tanque_seleccionado.equipa == equipa.Alliance) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(posicao_rato, MathHelper.Pi);
+                        if (tanque_seleccionado.equipa == Team.Coalition) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(posicao_rato, 0f);
+                        if (tanque_seleccionado.equipa == Team.Alliance) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(posicao_rato, MathHelper.Pi);
                         apontador = mira;
                     }
                 }
@@ -834,7 +917,7 @@ namespace RobotWar
             if (tanque.vida <= 0)
             {
                 tanque.activo = false;
-                if (tanque.equipa == equipa.Alliance)
+                if (tanque.equipa == Team.Alliance)
                 {
                     tanque.textura = tanque.alliance_destruido;
                 }
@@ -1328,11 +1411,6 @@ namespace RobotWar
         }
         #endregion
 
-
-        /// <summary>
-        /// This is called when the game should draw itself.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.Black);
