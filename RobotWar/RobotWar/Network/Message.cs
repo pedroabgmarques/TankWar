@@ -2,6 +2,7 @@
  * Class signature 
  */
 
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,8 +14,23 @@ namespace TankWar.Network
     /// <summary>
     /// Class documentation
     /// </summary>
-    public abstract class Message
+    public class Message
     {
-        public abstract byte[] byteMessage();
+
+        [JsonProperty("msgType")]
+        public MessageType msgType { get; set; }
+
+        [JsonProperty("msgNumber")]
+        public int msgNumber { get; set; }
+
+        public Message(MessageType msgType)
+        {
+            this.msgType = msgType;
+        }
+
+        public virtual byte[] byteMessage()
+        {
+            return new byte[] { };
+        }
     }
 }

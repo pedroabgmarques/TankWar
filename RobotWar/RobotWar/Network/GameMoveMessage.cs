@@ -16,9 +16,16 @@ namespace TankWar.Network
     /// </summary>
     public class GameMoveMessage : Message
     {
+        [JsonProperty("x")]
         int x;
+        [JsonProperty("y")]
         int y;
-        MessageType msgType;
+
+        public GameMoveMessage(MessageType msgType, int x, int y) : base(msgType)
+        {
+            this.x = x;
+            this.y = y;
+        }
 
         public override byte[] byteMessage()
         {

@@ -16,14 +16,12 @@ namespace TankWar.Network
     /// </summary>
     public class ControlMessage : Message
     {
-        [JsonProperty("msgType")]
-        MessageType msgType;
         [JsonProperty("command")]
-        ControlCommand command;
+        public ControlCommand command;
 
         public ControlMessage(MessageType msgType, ControlCommand command)
+            : base(msgType)
         {
-            this.msgType = msgType;
             this.command = command;
         }
 

@@ -17,6 +17,19 @@ namespace Common
     /// </summary>
     public class Player
     {
+
+        private int msgCounter;
+
+        public int MsgCounter
+        {
+            get 
+            { 
+                return msgCounter++;
+            }
+            set { msgCounter = value; }
+        }
+        
+
         private TcpClient client;
         public TcpClient Client
         {
@@ -43,6 +56,7 @@ namespace Common
             this.client = client;
             this.equipa = equipa;
             this.playerStatus = PlayerStatus.Waiting;
+            this.MsgCounter = 0;
         }
 
         

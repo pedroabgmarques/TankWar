@@ -11,6 +11,10 @@ using Microsoft.Xna.Framework.Media;
 using System.Net.Sockets;
 using System.Threading;
 using System.Text;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
+using TankWar.Network;
+using System.IO;
 
 namespace RobotWar
 {
@@ -81,12 +85,7 @@ namespace RobotWar
             graphics.IsFullScreen = false;
         }
 
-        /// <summary>
-        /// Allows the game to perform any initialization it needs to before starting to run.
-        /// This is where it can query for any required services and load any non-graphic
-        /// related content.  Calling base.Initialize will enumerate through any components
-        /// and initialize them as well.
-        /// </summary>
+        #region Initialize
         protected override void Initialize()
         {
             jogadas = 0;
@@ -119,68 +118,215 @@ namespace RobotWar
 
             base.Initialize();
         }
+        #endregion
+
+        #region Load and Unload
+        protected override void LoadContent()
+        {
+            // Create a new SpriteBatch, which can be used to draw textures.
+            spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            textura_tanque1 = Content.Load<Texture2D>("texturas/sprites/tanques/tank");
+            textura_tanque2 = Content.Load<Texture2D>("texturas/sprites/tanques/tank2");
+            textura_terreno = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva");
+            textura_cratera_1 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera");
+            textura_cratera_2 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera2");
+            textura_cratera_3 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera3");
+            textura_cratera_4 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera4");
+            textura_cratera_5 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera5");
+            seta_rato = Content.Load<Texture2D>("texturas/componentes/seta_rato");
+            seta_rato_nepias = Content.Load<Texture2D>("texturas/componentes/cursor_nepias");
+            seta_rato_mover = Content.Load<Texture2D>("texturas/componentes/seta_rato_mover");
+            seta_rato_esperar = Content.Load<Texture2D>("texturas/componentes/seta_rato_esperar");
+            mira = Content.Load<Texture2D>("texturas/componentes/crosshairs");
+            explosao = Content.Load<Texture2D>("animacoes/explosion");
+
+            //textura sobresposta dos terrenos para os quais se pode mover
+            textura_terreno_mover = new Texture2D(GraphicsDevice, 1, 1);
+            textura_terreno_mover.SetData(new[] { Color.LightGreen * 2f });
+
+            //textura sobresposta do terreno do tanque seleccionado
+            textura_terreno_seleccionado = new Texture2D(GraphicsDevice, 1, 1);
+            textura_terreno_seleccionado.SetData(new[] { Color.DarkGreen * 2f });
+
+            //Load dos conteudos especificos da InfoBox
+            infoBox.LoadContent(Content, GraphicsDevice, tanque_seleccionado);
+
+            //Load dos conteúdos da damageBox
+            damageBox.LoadContent(Content, GraphicsDevice);
+
+            //Load dos conteúdos da turnbox
+            turnBox.LoadContent(Content, GraphicsDevice);
+
+            gerarGrelha();
+            gerarTanques1();
+            gerarTanques2();
+            gerarPowerUps();
+
+            //acinzentar adversarios
+            acinzentarAdversarios();
+
+            //Load dos conteúdos dos PowerUps
+            foreach (PowerUp powerup in lista_powerups)
+            {
+                powerup.LoadContent(Content);
+            }
+
+            int n_tanques_equipa = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
+            int n_tanques_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
+            turnBox.Initializing(equipa_activa, n_tanques_equipa, n_tanques_prontos, false);
+
+
+            //Load dos conteudos especificos dos tanques
+            foreach (Tank tanque in lista_tanques)
+            {
+                tanque.LoadContent(Content);
+            }
+
+        }
+
+        protected override void UnloadContent()
+        {
+            spriteBatch.Dispose();
+
+            //Unload dos conteudos especificos da InfoBox
+            infoBox.UnloadContent();
+
+            //Unload dos conteudos especificos da DamageBox
+            damageBox.UnloadContent();
+
+            //Unload dos conteudos especificos da TurnBox
+            turnBox.UnloadContent();
+
+            //Unload dos conteudos especificos dos tanques
+            foreach (Tank tanque in lista_tanques)
+            {
+                tanque.UnloadContent();
+            }
+
+        }
+
+        private void CloseNetworkStuffOnExit()
+        {
+            client.Close();
+            clientStream.Dispose();
+            waitForServerMessages.Abort();
+            waitForServerMessages.Join();
+            processMessage.Abort();
+            processMessage.Join();
+        }
+        #endregion
 
         #region Network
+
         private void ConnectToServer(string servidor, int porto)
         {
             client = new TcpClient();
             client.Connect(servidor, porto);
             clientStream = client.GetStream();
 
+            ClientAndStream clientAndStream = new ClientAndStream(client, clientStream);
+
             //thread que fica a aguardar comunicações iniciadas pelo servidor
             waitForServerMessages = new Thread(new ParameterizedThreadStart(ReceiveServerMessage));
             waitForServerMessages.IsBackground = true;
-            waitForServerMessages.Start(clientStream);
+            waitForServerMessages.Start(clientAndStream);
         }
 
         private void ReceiveServerMessage(object clientStream)
         {
-
+            byte[] receiveBuffer = new byte[10025];
             while (true)
             {
-                NetworkStream stream = (NetworkStream)clientStream;
-                byte[] message = new byte[4096];
-                int bytesRead;
+                ClientAndStream clientAndStream = (ClientAndStream)clientStream;
+                NetworkStream networkStream = clientAndStream.stream;
+                TcpClient client = clientAndStream.client;
 
                 while (true)
                 {
-                    bytesRead = 0;
-
                     try
                     {
-                        //blocks until a client sends a message
-                        bytesRead = stream.Read(message, 0, 4096);
+                        var bytesRead = networkStream.Read(receiveBuffer, 0, (int)client.ReceiveBufferSize);
+                        if (bytesRead == 0)
+                        {
+                            // Read returns 0 if the client closes the connection
+                            break;
+                        }
+
+                        string mensagem = System.Text.Encoding.ASCII.GetString(receiveBuffer, 0, bytesRead);
+
+                        //cria nova thread para processar o conteudo da mensagem
+                        processMessage = new Thread(new ParameterizedThreadStart(ProcessServerMessage));
+                        processMessage.IsBackground = true;
+                        processMessage.Start(mensagem);
+                        
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        //a socket error has occured
+                        Console.WriteLine("ReceivePortMessages: " + ex.ToString());
                         break;
                     }
-
-                    if (bytesRead == 0)
-                    {
-                        //the client has disconnected from the server
-                        break;
-                    }
-
-                    //message has successfully been received
-                    ASCIIEncoding encoder = new ASCIIEncoding();
-
-                    string mensagem = encoder.GetString(message, 0, bytesRead);
-
-                    //cria nova thread para processar o conteudo da mensagem
-                    processMessage = new Thread(new ParameterizedThreadStart(ProcessServerMessage));
-                    processMessage.IsBackground = true;
-                    processMessage.Start(mensagem);
-
                 }
             }
         }
 
-        private void ProcessServerMessage(object mens)
+        private void ProcessServerMessage(object obj)
         {
-            string message = (string)mens;
-            Console.WriteLine("Mensagem do servidor: "+ message);
+            string json = (string)obj;
+            Console.WriteLine(json);
+
+            List<Message> listaMensagens = new List<Message>();
+
+            JsonTextReader reader = new JsonTextReader(new StringReader(json));
+            reader.SupportMultipleContent = true;
+            while (true)
+            {
+                if (!reader.Read())
+                {
+                    break;
+                }
+
+                JsonSerializer serializer = new JsonSerializer();
+                JObject jsonObj = serializer.Deserialize<JObject>(reader);
+                int intMsgType = (int)jsonObj["msgType"];
+                MessageType msgType = (MessageType)intMsgType;
+
+                switch (msgType)
+                {
+                    case MessageType.Control:
+                        ControlMessage ctrlMessage = JsonConvert.DeserializeObject<ControlMessage>(jsonObj.ToString());
+                        listaMensagens.Add(ctrlMessage);
+                        break;
+                    case MessageType.Move:
+                        GameMoveMessage moveMessage = JsonConvert.DeserializeObject<GameMoveMessage>(jsonObj.ToString());
+                        listaMensagens.Add(moveMessage);
+                        break;
+                    case MessageType.Attack:
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            listaMensagens.OrderBy(x => x.msgNumber);
+            foreach (Message msg in listaMensagens)
+            {
+                switch (msg.msgType)
+                {
+                    case MessageType.Control:
+                        ControlMessage ctrlMessage = (ControlMessage)msg;
+                        Console.WriteLine(ctrlMessage.msgNumber + ": Control message!");
+                        break;
+                    case MessageType.Move:
+                        GameMoveMessage moveMessage = (GameMoveMessage)msg;
+                        Console.WriteLine(moveMessage.msgNumber + ": Move message!");
+                        break;
+                    case MessageType.Attack:
+                        break;
+                    default:
+                        break;
+                }
+            }
         }
 
         private void SendMessageToServer(string message)
@@ -377,101 +523,7 @@ namespace RobotWar
         }
         #endregion
 
-        protected override void LoadContent()
-        {
-            // Create a new SpriteBatch, which can be used to draw textures.
-            spriteBatch = new SpriteBatch(GraphicsDevice);
-       
-            textura_tanque1 = Content.Load<Texture2D>("texturas/sprites/tanques/tank");
-            textura_tanque2 = Content.Load<Texture2D>("texturas/sprites/tanques/tank2");
-            textura_terreno = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva");
-            textura_cratera_1 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera");
-            textura_cratera_2 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera2");
-            textura_cratera_3 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera3");
-            textura_cratera_4 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera4");
-            textura_cratera_5 = Content.Load<Texture2D>("texturas/sprites/terrenos/textura_relva_cratera5");
-            seta_rato = Content.Load<Texture2D>("texturas/componentes/seta_rato");
-            seta_rato_nepias = Content.Load<Texture2D>("texturas/componentes/cursor_nepias");
-            seta_rato_mover = Content.Load<Texture2D>("texturas/componentes/seta_rato_mover");
-            seta_rato_esperar = Content.Load<Texture2D>("texturas/componentes/seta_rato_esperar");
-            mira = Content.Load<Texture2D>("texturas/componentes/crosshairs");
-            explosao = Content.Load<Texture2D>("animacoes/explosion");
-
-            //textura sobresposta dos terrenos para os quais se pode mover
-            textura_terreno_mover = new Texture2D(GraphicsDevice, 1,1);
-            textura_terreno_mover.SetData(new[] {Color.LightGreen*2f});
-
-            //textura sobresposta do terreno do tanque seleccionado
-            textura_terreno_seleccionado = new Texture2D(GraphicsDevice, 1, 1);
-            textura_terreno_seleccionado.SetData(new[] {Color.DarkGreen*2f});
-
-            //Load dos conteudos especificos da InfoBox
-            infoBox.LoadContent(Content, GraphicsDevice,tanque_seleccionado);
-
-            //Load dos conteúdos da damageBox
-            damageBox.LoadContent(Content, GraphicsDevice);
-
-            //Load dos conteúdos da turnbox
-            turnBox.LoadContent(Content, GraphicsDevice);
-
-            gerarGrelha();
-            gerarTanques1();
-            gerarTanques2();
-            gerarPowerUps();
-
-            //acinzentar adversarios
-            acinzentarAdversarios();
-
-            //Load dos conteúdos dos PowerUps
-            foreach (PowerUp powerup in lista_powerups)
-            {
-                powerup.LoadContent(Content);
-            }
-         
-            int n_tanques_equipa = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
-            int n_tanques_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
-            turnBox.Initializing(equipa_activa, n_tanques_equipa, n_tanques_prontos,false);
-          
-
-            //Load dos conteudos especificos dos tanques
-            foreach (Tank tanque in lista_tanques)
-            {
-                tanque.LoadContent(Content);
-            }
-            
-        }
-
-        protected override void UnloadContent()
-        {
-            spriteBatch.Dispose();
-            
-            //Unload dos conteudos especificos da InfoBox
-            infoBox.UnloadContent();
-
-            //Unload dos conteudos especificos da DamageBox
-            damageBox.UnloadContent();
-
-            //Unload dos conteudos especificos da TurnBox
-            turnBox.UnloadContent();
-
-            //Unload dos conteudos especificos dos tanques
-            foreach (Tank tanque in lista_tanques)
-            {
-                tanque.UnloadContent();
-            }
-
-        }
-
-        private void CloseNetworkStuffOnExit()
-        {
-            client.Close();
-            clientStream.Dispose();
-            waitForServerMessages.Abort();
-            waitForServerMessages.Join();
-            processMessage.Abort();
-            processMessage.Join();
-        }
-
+        #region Update
         protected override void Update(GameTime gameTime)
         {
             // Allows the game to exit
@@ -480,7 +532,7 @@ namespace RobotWar
                 CloseNetworkStuffOnExit();
                 this.Exit();
             }
-                
+
 
             KeyboardState teclado = Keyboard.GetState();
 
@@ -492,7 +544,7 @@ namespace RobotWar
             }
 
             teclado_anterior = teclado;
-            
+
             //guardar o estado do rato para topar cliques únicos
             rato_anterior = rato;
 
@@ -506,7 +558,7 @@ namespace RobotWar
             if (tanque_seleccionado != null)
             {
                 //rodar o tanque se for caso disso
-                tanque_seleccionado.Update(gameTime, lista_tanques, equipa_activa,Content);
+                tanque_seleccionado.Update(gameTime, lista_tanques, equipa_activa, Content);
             }
 
             if (verificarRatoTerrenoMover(posicao_rato) != null) apontador = seta_rato_mover;
@@ -538,21 +590,7 @@ namespace RobotWar
                 turnBox.Initializing(Team.Alliance, numeroTanquesActivosEquipa(lista_tanques, Team.Alliance), numeroTanquesProntosEquipa(lista_tanques, Team.Alliance), true);
             }
         }
-
-        static private void acinzentarAdversarios()
-        {
-            foreach (Tank tanque in lista_tanques)
-            {
-                if (tanque.equipa != equipa_activa && tanque.activo)
-                {
-                    tanque.cor = Color.Yellow;
-                }
-                else
-                {
-                    tanque.cor = Color.White;
-                }
-            }
-        }
+        #endregion
 
         #region Actualizar powerups
         static private void actualizarPowerups(ContentManager Content)
@@ -667,6 +705,7 @@ namespace RobotWar
         }
         #endregion
 
+        #region Turnos
         static public void executarActualizacaoJogadas(ContentManager Content)
         {
             turnos++;
@@ -695,15 +734,31 @@ namespace RobotWar
 
             int n_tanques = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
             int n_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
-            turnBox.Initializing(equipa_activa, n_tanques, n_prontos,false);
+            turnBox.Initializing(equipa_activa, n_tanques, n_prontos, false);
 
-            
+
 
             //acinzentar adversarios
             acinzentarAdversarios();
 
             actualizarPowerups(Content);
         }
+
+        static private void acinzentarAdversarios()
+        {
+            foreach (Tank tanque in lista_tanques)
+            {
+                if (tanque.equipa != equipa_activa && tanque.activo)
+                {
+                    tanque.cor = Color.Yellow;
+                }
+                else
+                {
+                    tanque.cor = Color.White;
+                }
+            }
+        }
+        #endregion
 
         #region Calcular numero de tanques activos de uma equipa
         static public int numeroTanquesActivosEquipa(List<Tank> lista_tanques, Team equipa_activa)
@@ -869,6 +924,34 @@ namespace RobotWar
                     }
                 }
 
+            }
+        }
+
+        private void seleccionarTanque(Vector2 posicao_rato)
+        {
+            //ver se nesta posicao existe algum robot
+            foreach (Tank tanque in lista_tanques)
+            {
+                Rectangle rato = new Rectangle((int)posicao_rato.X, (int)posicao_rato.Y, 1, 1);
+                Rectangle robot = new Rectangle((int)tanque.posicao.X, (int)tanque.posicao.Y, tanque.textura.Width / 2, tanque.textura.Height / 2);
+                if (rato.Intersects(robot))
+                {
+                    if (tanque.activo)
+                    {
+                        //o clique caiu numa posicao em que existe um tanque
+                        if (tanque_seleccionado == null || (tanque_seleccionado != null && tanque_seleccionado.equipa == tanque.equipa))
+                        {
+                            if (tanque.equipa == equipa_activa && tanque.pode_mover)
+                                seleccionarTanque(tanque);
+                        }
+                        else
+                        {
+                            if (tanque.equipa != equipa_activa && tanque_seleccionado.turnos_espera_disparar == 0)
+                                atacarTanque(tanque);
+                        }
+                    }
+
+                }
             }
         }
         #endregion
@@ -1060,36 +1143,6 @@ namespace RobotWar
             tanque_seleccionado = null;
             terreno_pode_mover.Clear();
             terreno_seleccionado = null;
-        }
-        #endregion
-
-        #region Seleccionar tanque
-        private void seleccionarTanque(Vector2 posicao_rato)
-        {
-            //ver se nesta posicao existe algum robot
-            foreach (Tank tanque in lista_tanques)
-            {
-                Rectangle rato = new Rectangle((int)posicao_rato.X, (int)posicao_rato.Y, 1, 1);
-                Rectangle robot = new Rectangle((int)tanque.posicao.X, (int)tanque.posicao.Y, tanque.textura.Width / 2, tanque.textura.Height / 2);
-                if (rato.Intersects(robot))
-                {
-                    if (tanque.activo)
-                    {
-                        //o clique caiu numa posicao em que existe um tanque
-                        if (tanque_seleccionado == null || (tanque_seleccionado != null && tanque_seleccionado.equipa == tanque.equipa))
-                        {
-                            if(tanque.equipa == equipa_activa && tanque.pode_mover)
-                            seleccionarTanque(tanque);
-                        }
-                        else
-                        {
-                            if(tanque.equipa!=equipa_activa && tanque_seleccionado.turnos_espera_disparar==0)
-                            atacarTanque(tanque);
-                        }
-                    }
-                    
-                }
-            }
         }
         #endregion
 
@@ -1411,6 +1464,7 @@ namespace RobotWar
         }
         #endregion
 
+        #region Draw
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.Black);
@@ -1478,5 +1532,21 @@ namespace RobotWar
             spriteBatch.End();
             base.Draw(gameTime);
         }
+        #endregion
     }
+
+    #region Data Structures
+    public class ClientAndStream
+    {
+        public TcpClient client { get; set; }
+        public NetworkStream stream { get; set; }
+
+        public ClientAndStream(TcpClient client, NetworkStream stream)
+        {
+            this.client = client;
+            this.stream = stream;
+        }
+    }
+
+    #endregion
 }

@@ -14,9 +14,6 @@ namespace TankWarServer
 {
     class Program
     {
-        /// <summary>
-        /// Porto em que o servidor fica à escuta
-        /// </summary>
         static int port = 7777;
 
         static TcpListener tcpListener;
@@ -94,12 +91,12 @@ namespace TankWarServer
                     if (player == jogo.player1)
                     {
                         jogo.player2.PlayerStatus = PlayerStatus.Waiting;
-                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.AdversaryQuit), jogo.player2.Client);
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.AdversaryQuit), jogo.player2);
                     }
                     else
                     {
                         jogo.player1.PlayerStatus = PlayerStatus.Waiting;
-                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.AdversaryQuit), jogo.player1.Client);
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.AdversaryQuit), jogo.player1);
                     }
                     listaJogos.Remove(jogo);
                     Console.WriteLine("1 jogo terminado.");
@@ -186,11 +183,13 @@ namespace TankWarServer
             Console.WriteLine("Mensagem do cliente: "+ mensagem);
         }
 
-        private static void SendMessage(Message mensagem, object client)
+        private static void SendMessage(Message mensagem, Player player)
         {
-            TcpClient tcpClient = (TcpClient)client;
+            TcpClient tcpClient = player.Client;
             try
             {
+                mensagem.msgNumber = player.MsgCounter;
+
                 NetworkStream clientStream = tcpClient.GetStream();
                 ASCIIEncoding encoder = new ASCIIEncoding();
                 byte[] buffer = mensagem.byteMessage();
@@ -259,7 +258,14 @@ namespace TankWarServer
             {
                 player.PlayerStatus = PlayerStatus.Waiting;
                 Console.WriteLine("Novo jogador foi colocado em espera.");
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player.Client);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
+                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
+                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
+                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
+                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
             }
         }
 
@@ -293,14 +299,14 @@ namespace TankWarServer
             if (random.Next(1) == 0)
             {
                 player1.PlayerStatus = PlayerStatus.Playing;
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player1.Client);
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player2.Client);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player1);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player2);
             }
             else
             {
                 player1.PlayerStatus = PlayerStatus.Playing;
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player1.Client);
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player2.Client);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player1);
+                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player2);
             }
         }
         #endregion
