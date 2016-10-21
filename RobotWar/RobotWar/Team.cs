@@ -15,6 +15,7 @@ namespace RobotWar
     /// </summary>
     public enum Team
     {
+        NoTeam,
         Alliance,
         Coalition
     }

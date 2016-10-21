@@ -15,6 +15,8 @@ namespace TankWar.Network
     /// </summary>
     public enum ControlCommand
     {
+        TeamAlliance,
+        TeamCoalition,
         Lobby,
         StartGameYourTurn,
         StartGameAdversaryTurn,

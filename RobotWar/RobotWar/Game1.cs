@@ -50,7 +50,8 @@ namespace RobotWar
         Animacao explode, fogacho;
         List<Animacao> lista_animacoes;
         static DamageBox damageBox;
-        static Turnbox turnBox;
+        static TurnBox turnBox;
+        static StatusBox statusBox;
 
         //listas e matriz do terreno
         static List<Tank> lista_tanques;
@@ -67,7 +68,8 @@ namespace RobotWar
         public static int turnos;
 
         //equipa activa
-        static Team equipa_activa;
+        static Team equipaJogador;
+        static Team equipaTurno;
 
         //Network:
         TcpClient client;
@@ -101,17 +103,15 @@ namespace RobotWar
 
             damageBox = new DamageBox();
 
-            turnBox = new Turnbox();
+            turnBox = new TurnBox();
+
+            statusBox = new StatusBox();
 
             infoBox.Initializing(lista_tanques);
 
-            //decidir a equipa que começa primeiro
-            int n_aleatorio = gerador_numeros.Next(2);
-            if (n_aleatorio == 0)
-            {
-                equipa_activa = Team.Alliance;
-            }
-            else { equipa_activa = Team.Coalition; }
+            equipaJogador = Team.NoTeam;
+            equipaTurno = Team.NoTeam;
+
 
             //Network
             ConnectToServer("localhost", 7777);
@@ -158,6 +158,9 @@ namespace RobotWar
             //Load dos conteúdos da turnbox
             turnBox.LoadContent(Content, GraphicsDevice);
 
+            //Load dos conteúdos da statusbox
+            statusBox.LoadContent(Content, GraphicsDevice);
+
             gerarGrelha();
             gerarTanques1();
             gerarTanques2();
@@ -172,10 +175,8 @@ namespace RobotWar
                 powerup.LoadContent(Content);
             }
 
-            int n_tanques_equipa = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
-            int n_tanques_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
-            turnBox.Initializing(equipa_activa, n_tanques_equipa, n_tanques_prontos, false);
-
+            int n_tanques_equipa = numeroTanquesActivosEquipa(lista_tanques, equipaJogador);
+            int n_tanques_prontos = numeroTanquesProntosEquipa(lista_tanques, equipaJogador);
 
             //Load dos conteudos especificos dos tanques
             foreach (Tank tanque in lista_tanques)
@@ -209,11 +210,18 @@ namespace RobotWar
         private void CloseNetworkStuffOnExit()
         {
             client.Close();
-            clientStream.Dispose();
-            waitForServerMessages.Abort();
-            waitForServerMessages.Join();
-            processMessage.Abort();
-            processMessage.Join();
+            if (clientStream != null) clientStream.Dispose();
+            if (waitForServerMessages != null)
+            {
+                waitForServerMessages.Abort();
+                waitForServerMessages.Join();
+            }
+            if (processMessage != null)
+            {
+                processMessage.Abort();
+                processMessage.Join();
+            }
+            
         }
         #endregion
 
@@ -222,15 +230,25 @@ namespace RobotWar
         private void ConnectToServer(string servidor, int porto)
         {
             client = new TcpClient();
-            client.Connect(servidor, porto);
-            clientStream = client.GetStream();
+            try
+            {
+                statusBox.Initializing(equipaJogador, 0, 0, "Connection to server..", false, true);
 
-            ClientAndStream clientAndStream = new ClientAndStream(client, clientStream);
+                client.Connect(servidor, porto);
+                clientStream = client.GetStream();
 
-            //thread que fica a aguardar comunicações iniciadas pelo servidor
-            waitForServerMessages = new Thread(new ParameterizedThreadStart(ReceiveServerMessage));
-            waitForServerMessages.IsBackground = true;
-            waitForServerMessages.Start(clientAndStream);
+                ClientAndStream clientAndStream = new ClientAndStream(client, clientStream);
+
+                //thread que fica a aguardar comunicações iniciadas pelo servidor
+                waitForServerMessages = new Thread(new ParameterizedThreadStart(ReceiveServerMessage));
+                waitForServerMessages.IsBackground = true;
+                waitForServerMessages.Start(clientAndStream);
+            }
+            catch (Exception e)
+            {
+                statusBox.Initializing(equipaJogador, 0, 0, "No server connection =(", false, true);
+            }
+            
         }
 
         private void ReceiveServerMessage(object clientStream)
@@ -263,7 +281,7 @@ namespace RobotWar
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("ReceivePortMessages: " + ex.ToString());
+                        statusBox.Initializing(equipaJogador, 0, 0, "No server connection =(", false, true);
                         break;
                     }
                 }
@@ -274,6 +292,7 @@ namespace RobotWar
         {
             string json = (string)obj;
             Console.WriteLine(json);
+
 
             List<Message> listaMensagens = new List<Message>();
 
@@ -315,7 +334,61 @@ namespace RobotWar
                 {
                     case MessageType.Control:
                         ControlMessage ctrlMessage = (ControlMessage)msg;
-                        Console.WriteLine(ctrlMessage.msgNumber + ": Control message!");
+                        Console.WriteLine(ctrlMessage.msgNumber + ": Control message: "+ ctrlMessage.command.ToString());
+
+                        switch (ctrlMessage.command)
+	                    {
+                            case ControlCommand.TeamAlliance:
+                                equipaJogador = Team.Alliance;
+                                statusBox.Initializing(equipaJogador, 0, 0, "Team Alliance", true, false);
+                                acinzentarAdversarios();
+                                break;
+                            case ControlCommand.TeamCoalition:
+                                equipaJogador = Team.Coalition;
+                                statusBox.Initializing(equipaJogador, 0, 0, "Team Coalition", true, false);
+                                acinzentarAdversarios();
+                                break;
+                            case ControlCommand.Lobby:
+                                statusBox.Initializing(equipaJogador, 0, 0, "Waiting for player 2..", false, true);
+                                break;
+                            case ControlCommand.StartGameYourTurn:
+                                turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, Team.Coalition), numeroTanquesProntosEquipa(lista_tanques, Team.Coalition), false);
+                                equipaTurno = equipaJogador;
+                                break;
+                            case ControlCommand.StartGameAdversaryTurn:
+                                statusBox.Initializing(equipaJogador, 0, 0, "Player 2 turn..", true, false);
+                                if (equipaJogador == Team.Alliance)
+                                {
+                                    equipaTurno = Team.Coalition;
+                                }
+                                else
+                                {
+                                    equipaTurno = Team.Alliance;
+                                }
+                                break;
+                            case ControlCommand.YourTurn:
+                                equipaTurno = equipaJogador;
+                                break;
+                            case ControlCommand.AdversaryTurn:
+                                if (equipaJogador == Team.Alliance)
+                                {
+                                    equipaTurno = Team.Coalition;
+                                }
+                                else
+                                {
+                                    equipaTurno = Team.Alliance;
+                                }
+                                break;
+                            case ControlCommand.GameEndYouWin:
+                                break;
+                            case ControlCommand.GameEndAdversaryWins:
+                                break;
+                            case ControlCommand.AdversaryQuit:
+                                statusBox.Initializing(equipaJogador, 0, 0, "Adversary quit!", false, true);
+                                break;
+                            default:
+                                break;
+	                    }
                         break;
                     case MessageType.Move:
                         GameMoveMessage moveMessage = (GameMoveMessage)msg;
@@ -327,6 +400,8 @@ namespace RobotWar
                         break;
                 }
             }
+
+           
         }
 
         private void SendMessageToServer(string message)
@@ -342,6 +417,7 @@ namespace RobotWar
             catch
             {
                 Console.WriteLine("Erro no envio de mensagem para o servidor!");
+                statusBox.Initializing(equipaJogador, 0, 0, "No server connection =(", false, true);
             }
         }
 
@@ -538,10 +614,12 @@ namespace RobotWar
 
             turnBox.Update();
 
-            if (teclado.IsKeyDown(Keys.Space) != teclado_anterior.IsKeyDown(Keys.Space) && teclado.IsKeyDown(Keys.Space))
-            {
-                executarActualizacaoJogadas(Content);
-            }
+            statusBox.Update();
+
+            //if (teclado.IsKeyDown(Keys.Space) != teclado_anterior.IsKeyDown(Keys.Space) && teclado.IsKeyDown(Keys.Space))
+            //{
+            //    executarActualizacaoJogadas(Content);
+            //}
 
             teclado_anterior = teclado;
 
@@ -552,21 +630,26 @@ namespace RobotWar
             posicao_rato.X = rato.X;
             posicao_rato.Y = rato.Y;
 
-            //verificar e agir quando o rato está por cima de um tanque
-            accoesRatoTanque();
-
-            if (tanque_seleccionado != null)
+            if (equipaJogador == equipaTurno)
             {
-                //rodar o tanque se for caso disso
-                tanque_seleccionado.Update(gameTime, lista_tanques, equipa_activa, Content);
+                //verificar e agir quando o rato está por cima de um tanque
+                accoesRatoTanque();
+
+                if (tanque_seleccionado != null)
+                {
+                    //rodar o tanque se for caso disso
+                    tanque_seleccionado.Update(gameTime, lista_tanques, equipaJogador, Content);
+                }
+
+                if (verificarRatoTerrenoMover(posicao_rato) != null) apontador = seta_rato_mover;
+                //topar cliques no rato
+                if (rato.LeftButton == ButtonState.Pressed && rato.LeftButton != rato_anterior.LeftButton)
+                {
+                    verificarAndar(posicao_rato);
+                }
             }
 
-            if (verificarRatoTerrenoMover(posicao_rato) != null) apontador = seta_rato_mover;
-            //topar cliques no rato
-            if (rato.LeftButton == ButtonState.Pressed && rato.LeftButton != rato_anterior.LeftButton)
-            {
-                verificarAndar(posicao_rato);
-            }
+            
 
             //update explosoes
             actualizarExplosoes(gameTime);
@@ -687,7 +770,7 @@ namespace RobotWar
         static public void actualizarJogadas(ContentManager Content)
         {
             jogadas++;
-            if (numeroTanquesActivosEquipa(lista_tanques, equipa_activa) >= 3)
+            if (numeroTanquesActivosEquipa(lista_tanques, equipaJogador) >= 3)
             {
                 if (jogadas == 3)
                 {
@@ -697,7 +780,7 @@ namespace RobotWar
             else
             {
                 //O jogador activo tem menos que 3 tanques
-                if(jogadas == numeroTanquesActivosEquipa(lista_tanques,equipa_activa))
+                if(jogadas == numeroTanquesActivosEquipa(lista_tanques,equipaJogador))
                 {
                     executarActualizacaoJogadas(Content);
                 }
@@ -710,13 +793,13 @@ namespace RobotWar
         {
             turnos++;
             jogadas = 0;
-            if (equipa_activa == Team.Alliance)
+            if (equipaJogador == Team.Alliance)
             {
-                equipa_activa = Team.Coalition;
+                equipaJogador = Team.Coalition;
             }
             else
             {
-                equipa_activa = Team.Alliance;
+                equipaJogador = Team.Alliance;
             }
 
             //Actualizar os tanques que estiverem à espera para disparar
@@ -732,11 +815,9 @@ namespace RobotWar
                 }
             }
 
-            int n_tanques = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
-            int n_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
-            turnBox.Initializing(equipa_activa, n_tanques, n_prontos, false);
-
-
+            //int n_tanques = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
+            //int n_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
+            //turnBox.Initializing(equipa_activa, n_tanques, n_prontos, false);
 
             //acinzentar adversarios
             acinzentarAdversarios();
@@ -748,7 +829,7 @@ namespace RobotWar
         {
             foreach (Tank tanque in lista_tanques)
             {
-                if (tanque.equipa != equipa_activa && tanque.activo)
+                if (tanque.equipa != equipaJogador && tanque.activo)
                 {
                     tanque.cor = Color.Yellow;
                 }
@@ -848,7 +929,7 @@ namespace RobotWar
                 if (!verificarAndamento())
                 {
 
-                    if (!verificarRatoTanque().pode_mover || verificarRatoTanque().equipa!=equipa_activa)
+                    if (!verificarRatoTanque().pode_mover || verificarRatoTanque().equipa!=equipaJogador)
                     {
                         apontador = seta_rato_nepias;
                     }
@@ -941,12 +1022,12 @@ namespace RobotWar
                         //o clique caiu numa posicao em que existe um tanque
                         if (tanque_seleccionado == null || (tanque_seleccionado != null && tanque_seleccionado.equipa == tanque.equipa))
                         {
-                            if (tanque.equipa == equipa_activa && tanque.pode_mover)
+                            if (tanque.equipa == equipaJogador && tanque.pode_mover)
                                 seleccionarTanque(tanque);
                         }
                         else
                         {
-                            if (tanque.equipa != equipa_activa && tanque_seleccionado.turnos_espera_disparar == 0)
+                            if (tanque.equipa != equipaJogador && tanque_seleccionado.turnos_espera_disparar == 0)
                                 atacarTanque(tanque);
                         }
                     }
@@ -1509,6 +1590,9 @@ namespace RobotWar
 
             //desenhar a tunrBox
             turnBox.Draw(spriteBatch, GraphicsDevice);
+
+            //desenhar a statusBox
+            statusBox.Draw(spriteBatch, GraphicsDevice);
 
             //desenhar seta do rato
             Vector2 origem_rato;

@@ -244,6 +244,7 @@ namespace TankWarServer
         private static void MatchMaking(Player player)
         {
             Player waitingPlayer = listaJogadores.Find(x => x.PlayerStatus == PlayerStatus.Waiting);
+
             if (waitingPlayer != null)
             {
                 //Temos um jogador à espera de adversário!
@@ -252,6 +253,17 @@ namespace TankWarServer
                 listaJogos.Add(new Game(waitingPlayer, player));
                 Console.WriteLine("Novo jogador iniciou um novo jogo!");
 
+                if (player.Equipa == Team.Alliance)
+                {
+                    SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamAlliance), player);
+                    SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamCoalition), waitingPlayer);
+                }
+                else
+                {
+                    SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamCoalition), player);
+                    SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamAlliance), waitingPlayer);
+                }
+                
                 IniciarJogo(waitingPlayer, player);
             }
             else
@@ -259,13 +271,6 @@ namespace TankWarServer
                 player.PlayerStatus = PlayerStatus.Waiting;
                 Console.WriteLine("Novo jogador foi colocado em espera.");
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
-                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
-                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
-                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
-                SendMessage(new ControlMessage(MessageType.Control, ControlCommand.Lobby), player);
-                SendMessage(new GameMoveMessage(MessageType.Move, 10, 5), player);
             }
         }
 
@@ -282,7 +287,31 @@ namespace TankWarServer
                     player1.PlayerStatus = PlayerStatus.Playing;
                     player2.PlayerStatus = PlayerStatus.Playing;
 
+                    //Verificar equipas
+                    if (player1.Equipa == player2.Equipa)
+                    {
+                        if (player1.Equipa == Team.Alliance)
+                        {
+                            player2.Equipa = Team.Coalition;
+                        }
+                        else
+                        {
+                            player2.Equipa = Team.Alliance;
+                        }
+                    }
+
                     listaJogos.Add(new Game(player1, player2));
+
+                    if (player1.Equipa == Team.Alliance)
+                    {
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamAlliance), player1);
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamCoalition), player2);
+                    }
+                    else
+                    {
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamAlliance), player2);
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamCoalition), player1);
+                    }
 
                     IniciarJogo(player1, player2);
 
@@ -296,15 +325,15 @@ namespace TankWarServer
 
         private static void IniciarJogo(Player player1, Player player2)
         {
+            player1.PlayerStatus = PlayerStatus.Playing;
+            player2.PlayerStatus = PlayerStatus.Playing;
             if (random.Next(1) == 0)
             {
-                player1.PlayerStatus = PlayerStatus.Playing;
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player1);
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player2);
             }
             else
             {
-                player1.PlayerStatus = PlayerStatus.Playing;
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player1);
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player2);
             }

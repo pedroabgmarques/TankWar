@@ -7,7 +7,7 @@ using Microsoft.Xna.Framework.Content;
 
 namespace RobotWar
 {
-    public class TurnBox
+    public class StatusBox
     {
 
         Texture2D textura, textura_alliance, textura_coalition, textura_proximo;
@@ -17,11 +17,13 @@ namespace RobotWar
         static public float largura = 295, altura = 155;
         float transparencia;
         float velocidade;
-        int n_tanques,n_prontos;
+        int n_tanques, n_prontos;
         bool stay_visible;
-        
+        string message;
+        bool showTeam;
 
-        public void Initializing(Team equipa, int n_tanques, int n_prontos, bool stay_visible)
+
+        public void Initializing(Team equipa, int n_tanques, int n_prontos, string message, bool showTeam, bool stay_visible)
         {
             this.activo = true;
             this.transparencia = 1f;
@@ -37,6 +39,8 @@ namespace RobotWar
             }
             this.n_tanques = n_tanques;
             this.n_prontos = n_prontos;
+            this.showTeam = showTeam;
+            this.message = message;
         }
 
         public void LoadContent(ContentManager content, GraphicsDevice graphic)
@@ -68,14 +72,14 @@ namespace RobotWar
                 textura_proximo = textura_coalition;
             }
 
-            if (transparencia!=0f)
+            if (transparencia != 0f)
             {
                 transparencia -= velocidade;
                 if (!stay_visible)
                 {
                     velocidade += 0.0001f;
                 }
-                
+
             }
             else
             {
@@ -89,24 +93,22 @@ namespace RobotWar
             {
                 float x = graphics.Viewport.Width / 2 - largura / 2;
                 float y = graphics.Viewport.Height / 2 - altura / 2;
-                spritebatch.Draw(textura, new Vector2(x,y), null,
+
+                spritebatch.Draw(textura, new Vector2(x, y), null,
                         Color.White * transparencia, 0f, Vector2.Zero, new Vector2(largura, altura), SpriteEffects.None, 0f);
 
-                spritebatch.Draw(textura_proximo, new Vector2(x+10, y+10), null,
-                     Color.White * transparencia, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+                if (showTeam)
+                {
+                    spritebatch.Draw(textura_proximo, new Vector2(x + 10, y + 10), null,
+                    Color.White * transparencia, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+                    spritebatch.DrawString(font, equipa.ToString(), new Vector2(x + 100, y + 13), Color.Black * transparencia);
+                    spritebatch.DrawString(tahoma_20_bold, "Turno " + Game1.turnos, new Vector2(x + 100, y + 40), Color.Black * transparencia);
+                }
 
-                spritebatch.DrawString(font, equipa.ToString(), new Vector2(x + 100, y + 13), Color.Black*transparencia);
-                spritebatch.DrawString(tahoma_20_bold, "Turno "+Game1.turnos, new Vector2(x + 100, y + 40), Color.Black * transparencia);
-                if (stay_visible)
-                {
-                    spritebatch.DrawString(tahoma_20, "Tanques: " + n_tanques, new Vector2(x + 100, y + 65), Color.Black * transparencia);
-                    spritebatch.DrawString(font, "WINNER!", new Vector2(x + 100, y + 120), Color.Black * transparencia);
-                }
-                else
-                {
-                    spritebatch.DrawString(tahoma_20, "Tanques: " + n_tanques, new Vector2(x + 100, y + 96), Color.Black * transparencia);
-                    spritebatch.DrawString(tahoma_20, "Prontos a disparar: " + n_prontos, new Vector2(x + 100, y + 120), Color.Black * transparencia);
-                }
+
+                spritebatch.DrawString(tahoma_20, message, new Vector2(x + (showTeam ? 100 : 60), y + (showTeam ? 60 : (y / 4 - 3))), Color.Black * transparencia);
+                
+
             }
         }
 

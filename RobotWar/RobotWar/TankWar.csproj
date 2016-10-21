@@ -133,12 +133,14 @@
     <Compile Include="Network\ControlMessage.cs" />
     <Compile Include="Network\GameAttackMessage.cs" />
     <Compile Include="Network\GameMoveMessage.cs" />
+    <Compile Include="Network\GameState.cs" />
     <Compile Include="Network\Message.cs" />
     <Compile Include="Network\MessageType.cs" />
     <Compile Include="PowerUp.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Game1.cs" />
+    <Compile Include="StatusBox.cs" />
     <Compile Include="Tank.cs" />
     <Compile Include="Team.cs" />
     <Compile Include="Terreno.cs" />

@@ -41,6 +41,7 @@ namespace Common
         public Team Equipa
         {
             get { return equipa; }
+            set { equipa = value; }
         }
 
         private PlayerStatus playerStatus;
