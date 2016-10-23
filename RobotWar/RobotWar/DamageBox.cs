@@ -20,8 +20,9 @@ namespace RobotWar
         float transparencia;
         bool morreu,ha_dano,passar_turno;
         tipo_PowerUp tipo;
+        Tank tank;
 
-        public void Initializing(Vector2 posicao_inicial, int fire_power_atacante, int dano, bool morreu)
+        public void Initializing(Vector2 posicao_inicial, int fire_power_atacante, int dano, bool morreu, Tank tank)
         {
             this.posicao_inicial = posicao_inicial;
             this.posicao_actual_y = (int)posicao_inicial.Y;
@@ -32,6 +33,7 @@ namespace RobotWar
             this.morreu = morreu;
             this.ha_dano = true;
             this.passar_turno = true;
+            this.tank = tank;
         }
 
         public void Initializing(Vector2 posicao_inicial, tipo_PowerUp tipo, bool passar_turno)
@@ -63,7 +65,7 @@ namespace RobotWar
                 }
                 else
                 {
-                    if(this.passar_turno) Game1.actualizarJogadas(Content);
+                    if(this.passar_turno) Game1.actualizarJogadas(tank);
                     this.activo = false;
                 }
             }

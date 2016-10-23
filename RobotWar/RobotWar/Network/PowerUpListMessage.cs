@@ -3,6 +3,7 @@
  */
 
 using Newtonsoft.Json;
+using RobotWar;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,19 +11,16 @@ using System.Text;
 
 namespace TankWar.Network
 {
-
-    /// <summary>
-    /// Class documentation
-    /// </summary>
-    public class ControlMessage : Message
+    public class PowerUpListMessage : Message
     {
-        [JsonProperty("command")]
-        public ControlCommand command;
 
-        public ControlMessage(MessageType msgType, ControlCommand command)
+        [JsonProperty("listaPowerUps")]
+        public List<PowerUp> listaPowerUps;
+
+        public PowerUpListMessage(MessageType msgType, List<PowerUp> listaPowerUps)
             : base(msgType)
         {
-            this.command = command;
+            this.listaPowerUps = listaPowerUps;
         }
 
         public override byte[] ByteMessage()

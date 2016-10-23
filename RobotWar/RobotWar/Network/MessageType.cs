@@ -14,6 +14,9 @@ namespace TankWar.Network
     {
         Control,
         Move,
-        Attack
+        Attack,
+        EndTurn,
+        PowerUpList,
+        PowerUp
     }
 }

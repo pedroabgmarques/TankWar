@@ -14,16 +14,11 @@ namespace TankWar.Network
     /// <summary>
     /// Class documentation
     /// </summary>
-    public class ControlMessage : Message
+    public class EndTurnMessage : Message
     {
-        [JsonProperty("command")]
-        public ControlCommand command;
 
-        public ControlMessage(MessageType msgType, ControlCommand command)
-            : base(msgType)
-        {
-            this.command = command;
-        }
+        public EndTurnMessage(MessageType msgType)
+            : base(msgType) { }
 
         public override byte[] ByteMessage()
         {

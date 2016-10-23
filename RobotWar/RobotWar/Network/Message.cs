@@ -28,7 +28,7 @@ namespace TankWar.Network
             this.msgType = msgType;
         }
 
-        public virtual byte[] byteMessage()
+        public virtual byte[] ByteMessage()
         {
             return new byte[] { };
         }

@@ -17,17 +17,20 @@ namespace TankWar.Network
     public class GameMoveMessage : Message
     {
         [JsonProperty("x")]
-        int x;
+        public float x;
         [JsonProperty("y")]
-        int y;
+        public float y;
+        [JsonProperty("tank")]
+        public int tankID;
 
-        public GameMoveMessage(MessageType msgType, int x, int y) : base(msgType)
+        public GameMoveMessage(MessageType msgType, float x, float y, int tank) : base(msgType)
         {
             this.x = x;
             this.y = y;
+            this.tankID = tank;
         }
 
-        public override byte[] byteMessage()
+        public override byte[] ByteMessage()
         {
             return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
         }

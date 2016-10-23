@@ -1,4 +1,6 @@
 ﻿using Common;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using RobotWar;
 using System;
 using System.Collections.Generic;
@@ -180,7 +182,84 @@ namespace TankWarServer
             string mensagem = (string)parametros[0];
             TcpClient cliente = (TcpClient)parametros[1];
 
-            Console.WriteLine("Mensagem do cliente: "+ mensagem);
+            Console.WriteLine("\nMensagem de " + cliente .Client.RemoteEndPoint+ ": " + mensagem);
+
+            //Serialziar a mensagem para um objeto JSON para lermos o tipo de mensagem
+            JObject jsonObj = JsonConvert.DeserializeObject<JObject>(mensagem);
+            int intMsgType = (int)jsonObj["msgType"];
+            MessageType msgType = (MessageType)intMsgType;
+
+            //Switch ao tipo de mensagem
+            switch (msgType)
+            {
+                case MessageType.Control:
+                    //O cliente não envia mensagens de controlo, nada a fazer aqui.
+                    break;
+                case MessageType.Move:
+                    //Serializar a mensagem para o tipo correto
+                    GameMoveMessage moveMessage = JsonConvert.DeserializeObject<GameMoveMessage>(jsonObj.ToString());
+                    //Encontrar o jogador que moveu
+                    Player jogadorMove = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogoMove = EncontrarAdversarioEJogo(jogadorMove);
+                    if (adversarioEJogoMove.Item1 != null)
+                    {
+                        //Reencaminhar a mensagem de movimento para o adversário
+                        SendMessage(moveMessage, adversarioEJogoMove.Item1);
+                    }
+                    break;
+                case MessageType.Attack:
+                    break;
+                case MessageType.EndTurn:
+                    //Mensagem não tem informação, é apenas um sinal, não é preciso desserializá-la
+                    //Encontrar o jogador que terminou o turno
+                    Player jogadorEndTurn = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogoEndTurn = EncontrarAdversarioEJogo(jogadorEndTurn);
+                    if (adversarioEJogoEndTurn.Item1 != null && adversarioEJogoEndTurn.Item2 != null)
+                    {
+                        //Atualizar o jogador que tem a vez de jogar agora
+                        adversarioEJogoEndTurn.Item2.currentPlayer = adversarioEJogoEndTurn.Item1;
+                        //Enviar mensagens para os jogadores com a trocar de turnos
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.AdversaryTurn), jogadorEndTurn);
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.YourTurn), adversarioEJogoEndTurn.Item1);
+                    }
+                    
+                    break;
+                case MessageType.PowerUpList:
+                    //Serializar a mensagem para o tipo correto
+                    PowerUpListMessage powerUpListMessage = JsonConvert.DeserializeObject<PowerUpListMessage>(jsonObj.ToString());
+                    Player jogadorPowerUpList = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogopowerUpList = EncontrarAdversarioEJogo(jogadorPowerUpList);
+                    //Reencaminhar a lista de powerUps para o adversario
+                    SendMessage(powerUpListMessage, adversarioEJogopowerUpList.Item1);
+                    Console.WriteLine("\nLista de powerups enviado para o adversário: " + adversarioEJogopowerUpList.Item1.Client.Client.RemoteEndPoint);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private static Tuple<Player, Game> EncontrarAdversarioEJogo(Player player)
+        {
+            Tuple<Player, Game> adversarioEJogo = null;
+            Player jogador = listaJogadores.Find(p => p.Client == player.Client);
+            if (jogador != null)
+            {
+                //Encontrar o jogo em que este jogador está
+                Game jogo = listaJogos.Find(j => j.currentPlayer == jogador);
+                if (jogo != null)
+                {
+                    //Encontrar o adversário
+                    if (jogo.player1 == jogador)
+                    {
+                        adversarioEJogo = new Tuple<Player, Game>(jogo.player2, jogo);
+                    }
+                    else
+                    {
+                        adversarioEJogo = new Tuple<Player, Game>(jogo.player1, jogo);
+                    }
+                }
+            }
+            return adversarioEJogo;
         }
 
         private static void SendMessage(Message mensagem, Player player)
@@ -191,8 +270,7 @@ namespace TankWarServer
                 mensagem.msgNumber = player.MsgCounter;
 
                 NetworkStream clientStream = tcpClient.GetStream();
-                ASCIIEncoding encoder = new ASCIIEncoding();
-                byte[] buffer = mensagem.byteMessage();
+                byte[] buffer = mensagem.ByteMessage();
                 clientStream.Write(buffer, 0, buffer.Length);
             }
             catch
@@ -235,10 +313,22 @@ namespace TankWarServer
             else
             {
                 //É o primeiro jogador ou todos os outros estão aos pares, equipa aleatória
-                Array equipas = Enum.GetValues(typeof(Team));
-                newPlayerTeam = (Team)equipas.GetValue(random.Next(equipas.Length));
+                //newPlayerTeam = GetRandomTeam();
+                newPlayerTeam = Team.Alliance;
             }
             return newPlayerTeam;
+        }
+
+        private static Team GetRandomTeam()
+        {
+            if (random.NextDouble() > 0.5)
+            {
+                return Team.Alliance;
+            }
+            else
+            {
+                return Team.Coalition;
+            }
         }
 
         private static void MatchMaking(Player player)
@@ -327,7 +417,7 @@ namespace TankWarServer
         {
             player1.PlayerStatus = PlayerStatus.Playing;
             player2.PlayerStatus = PlayerStatus.Playing;
-            if (random.Next(1) == 0)
+            if (random.NextDouble() > 0) //Martelado para começar sempre o player2
             {
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player1);
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player2);

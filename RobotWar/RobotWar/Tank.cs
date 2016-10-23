@@ -262,7 +262,7 @@ namespace RobotWar
                     }
                     else
                     {
-                        Game1.actualizarJogadas(Content);
+                        Game1.actualizarJogadas(this);
                     }
 
                     if (double_turn)

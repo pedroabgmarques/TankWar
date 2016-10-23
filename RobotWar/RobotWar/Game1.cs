@@ -63,6 +63,9 @@ namespace RobotWar
         //nº de tanques de cada equipa
         int n_tanques = 20;
 
+        //altura da grelha
+        int altura_grelha = 8;
+
         //contador de jogadas
         static int jogadas;
         public static int turnos;
@@ -72,8 +75,8 @@ namespace RobotWar
         static Team equipaTurno;
 
         //Network:
-        TcpClient client;
-        NetworkStream clientStream;
+        TcpClient server;
+        static NetworkStream serverStream;
         Thread waitForServerMessages;
         Thread processMessage;
 
@@ -81,8 +84,8 @@ namespace RobotWar
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
-            graphics.PreferredBackBufferWidth = 1366;
-            graphics.PreferredBackBufferHeight = 768;
+            graphics.PreferredBackBufferWidth = 800;
+            graphics.PreferredBackBufferHeight = 600;
             graphics.PreferMultiSampling = true;
             graphics.IsFullScreen = false;
         }
@@ -164,7 +167,6 @@ namespace RobotWar
             gerarGrelha();
             gerarTanques1();
             gerarTanques2();
-            gerarPowerUps();
 
             //acinzentar adversarios
             acinzentarAdversarios();
@@ -209,8 +211,8 @@ namespace RobotWar
 
         private void CloseNetworkStuffOnExit()
         {
-            client.Close();
-            if (clientStream != null) clientStream.Dispose();
+            server.Close();
+            if (serverStream != null) serverStream.Dispose();
             if (waitForServerMessages != null)
             {
                 waitForServerMessages.Abort();
@@ -227,17 +229,19 @@ namespace RobotWar
 
         #region Network
 
+        static private int msgCounter = 0;
+
         private void ConnectToServer(string servidor, int porto)
         {
-            client = new TcpClient();
+            server = new TcpClient();
             try
             {
-                statusBox.Initializing(equipaJogador, 0, 0, "Connection to server..", false, true);
+                statusBox.Initializing(equipaJogador, 0, 0, "Connecting to server..", false, true);
 
-                client.Connect(servidor, porto);
-                clientStream = client.GetStream();
+                server.Connect(servidor, porto);
+                serverStream = server.GetStream();
 
-                ClientAndStream clientAndStream = new ClientAndStream(client, clientStream);
+                ClientAndStream clientAndStream = new ClientAndStream(server, serverStream);
 
                 //thread que fica a aguardar comunicações iniciadas pelo servidor
                 waitForServerMessages = new Thread(new ParameterizedThreadStart(ReceiveServerMessage));
@@ -293,7 +297,6 @@ namespace RobotWar
             string json = (string)obj;
             Console.WriteLine(json);
 
-
             List<Message> listaMensagens = new List<Message>();
 
             JsonTextReader reader = new JsonTextReader(new StringReader(json));
@@ -322,6 +325,10 @@ namespace RobotWar
                         break;
                     case MessageType.Attack:
                         break;
+                    case MessageType.PowerUpList:
+                        PowerUpListMessage powerUpListMessag = JsonConvert.DeserializeObject<PowerUpListMessage>(jsonObj.ToString());
+                        listaMensagens.Add(powerUpListMessag);
+                        break;
                     default:
                         break;
                 }
@@ -330,6 +337,9 @@ namespace RobotWar
             listaMensagens.OrderBy(x => x.msgNumber);
             foreach (Message msg in listaMensagens)
             {
+
+                Console.WriteLine("msgType: " + msg.msgType);
+
                 switch (msg.msgType)
                 {
                     case MessageType.Control:
@@ -354,6 +364,9 @@ namespace RobotWar
                             case ControlCommand.StartGameYourTurn:
                                 turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, Team.Coalition), numeroTanquesProntosEquipa(lista_tanques, Team.Coalition), false);
                                 equipaTurno = equipaJogador;
+                                //Começamos nós a jogar, criamos a lista de powerups e enviamos para o servidor
+                                gerarPowerUps();
+                                SendMessageToServer(new PowerUpListMessage(MessageType.PowerUpList, lista_powerups));
                                 break;
                             case ControlCommand.StartGameAdversaryTurn:
                                 statusBox.Initializing(equipaJogador, 0, 0, "Player 2 turn..", true, false);
@@ -367,17 +380,19 @@ namespace RobotWar
                                 }
                                 break;
                             case ControlCommand.YourTurn:
-                                equipaTurno = equipaJogador;
+                                executarActualizacaoJogadas(Content, equipaJogador);
                                 break;
                             case ControlCommand.AdversaryTurn:
+                                Team equipaAJogar;
                                 if (equipaJogador == Team.Alliance)
                                 {
-                                    equipaTurno = Team.Coalition;
+                                    equipaAJogar = Team.Coalition;
                                 }
                                 else
                                 {
-                                    equipaTurno = Team.Alliance;
+                                    equipaAJogar = Team.Alliance;
                                 }
+                                executarActualizacaoJogadas(Content, equipaAJogar);
                                 break;
                             case ControlCommand.GameEndYouWin:
                                 break;
@@ -390,11 +405,31 @@ namespace RobotWar
                                 break;
 	                    }
                         break;
+
                     case MessageType.Move:
+                        //O adversário moveu um tanque
                         GameMoveMessage moveMessage = (GameMoveMessage)msg;
-                        Console.WriteLine(moveMessage.msgNumber + ": Move message!");
+                        Console.WriteLine(moveMessage.msgNumber + ": Move message.");
+                        Tank tanqueMovido = lista_tanques.Find(t => t.equipa != equipaJogador && t.ID == moveMessage.tankID);
+                        if (tanqueMovido != null)
+                        {
+                            MoverTanqueNetwork(moveMessage, tanqueMovido);
+                        }
                         break;
                     case MessageType.Attack:
+                        break;
+                    case MessageType.PowerUpList:
+                        //A lista de powerUps foi gerada pelo adversário e está-nos a ser enviada pelo servidor
+                        PowerUpListMessage powerUpListMessage = (PowerUpListMessage)msg;
+                        Console.WriteLine(powerUpListMessage.msgNumber + ": Power Up List message.");
+                        foreach (PowerUp power in powerUpListMessage.listaPowerUps)
+                        {
+                            PowerUp powerup = new PowerUp();
+                            Vector2 posicao_grelha = power.posicao_grelha;
+                            Vector2 posicao = new Vector2((grelha[(int)posicao_grelha.X, (int)posicao_grelha.Y].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala + 3, (grelha[(int)posicao_grelha.X, (int)posicao_grelha.Y].posicao.Y));
+                            powerup.Initializing(power.tipo, posicao, posicao_grelha, Content);
+                            lista_powerups.Add(powerup);
+                        }
                         break;
                     default:
                         break;
@@ -404,15 +439,15 @@ namespace RobotWar
            
         }
 
-        private void SendMessageToServer(string message)
+        static private void SendMessageToServer(Message message)
         {
             try
             {
-                ASCIIEncoding encoder = new ASCIIEncoding();
-                byte[] buffer = encoder.GetBytes(message);
+                message.msgNumber = msgCounter++;
+                byte[] buffer = message.ByteMessage();
 
-                clientStream.Write(buffer, 0, buffer.Length);
-                clientStream.Flush();
+                serverStream.Write(buffer, 0, buffer.Length);
+                serverStream.Flush();
             }
             catch
             {
@@ -422,6 +457,27 @@ namespace RobotWar
         }
 
         #endregion
+
+
+        private void MoverTanqueNetwork(GameMoveMessage moveMessage, Tank tanqueMovido)
+        {
+            gerarTerrenoPossivel(tanqueMovido, "activar");
+            Terreno terreno = verificarRatoTerrenoMover(new Vector2(moveMessage.x, moveMessage.y), tanqueMovido);
+            //foi clicada uma posição de andamento válida
+            apontador = seta_rato_esperar;
+            if (tanqueMovido.equipa == Team.Coalition) tanqueMovido.angulo_destino = tanqueMovido.anguloDoisVectores(
+                new Vector2(terreno.posicao.X + terreno.largura / 4, terreno.posicao.Y + terreno.altura / 4), 0f);
+            if (tanqueMovido.equipa == Team.Alliance) tanqueMovido.angulo_destino = tanqueMovido.anguloDoisVectores(
+                new Vector2(terreno.posicao.X + terreno.largura / 4, terreno.posicao.Y + terreno.altura / 4), MathHelper.Pi);
+
+            Vector2 posicaoDestino = new Vector2(terreno.posicao.X + terreno.largura / 8, terreno.posicao.Y);
+
+            //mandar o tanque andar
+            tanqueMovido.alterarPosicaoDestino(posicaoDestino, terreno_pode_mover, tanqueMovido);
+            tanqueMovido.posicao_grelha = terreno.posicao_grelha;
+            terreno_seleccionado = null;
+            
+        }
 
         #region Gerar tanques1
         private void gerarTanques1()
@@ -475,9 +531,9 @@ namespace RobotWar
                  
                 #endregion
 
-                
-                posicao_tanque2 = new Vector2((grelha[0, i].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala / 2, grelha[10, i].posicao.Y);
-                tank.posicao_grelha = new Vector2(10f, i);
+
+                posicao_tanque2 = new Vector2((grelha[0, i].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala / 2, grelha[altura_grelha - 1, i].posicao.Y);
+                tank.posicao_grelha = new Vector2(altura_grelha - 1, i);
                 
 
                 tank.Initialiazing(textura_tanque2, posicao_tanque2,SpriteEffects.None, Team.Coalition,gerador_numeros,i);
@@ -540,11 +596,11 @@ namespace RobotWar
         #region Gerar grelha
         private void gerarGrelha()
         {
-            grelha = new Terreno[11,n_tanques];
+            grelha = new Terreno[altura_grelha, n_tanques];
             Vector2 posicao_terreno, posicao_grelha;
             int offset_x = 22;
             int offset_y = 22;
-            for (int i = 0; i < 11; i++)
+            for (int i = 0; i < altura_grelha; i++)
             {
                 for (int j = 0; j < n_tanques; j++)
                 {
@@ -564,7 +620,7 @@ namespace RobotWar
         #region Desenhar grelha
         public void desenharGrelha()
         {
-            for (int i = 0; i < 11; i++)
+            for (int i = 0; i < altura_grelha; i++)
             {
                 for (int j = 0; j < 20; j++)
                 {
@@ -635,13 +691,7 @@ namespace RobotWar
                 //verificar e agir quando o rato está por cima de um tanque
                 accoesRatoTanque();
 
-                if (tanque_seleccionado != null)
-                {
-                    //rodar o tanque se for caso disso
-                    tanque_seleccionado.Update(gameTime, lista_tanques, equipaJogador, Content);
-                }
-
-                if (verificarRatoTerrenoMover(posicao_rato) != null) apontador = seta_rato_mover;
+                if (verificarRatoTerrenoMover(posicao_rato, tanque_seleccionado) != null) apontador = seta_rato_mover;
                 //topar cliques no rato
                 if (rato.LeftButton == ButtonState.Pressed && rato.LeftButton != rato_anterior.LeftButton)
                 {
@@ -649,7 +699,11 @@ namespace RobotWar
                 }
             }
 
-            
+            //atualizar tanques
+            foreach (Tank tanque in lista_tanques)
+            {
+                tanque.Update(gameTime, lista_tanques, equipaJogador, Content);
+            }
 
             //update explosoes
             actualizarExplosoes(gameTime);
@@ -729,17 +783,23 @@ namespace RobotWar
         #region Verificar se é para mover um tanque
         private void verificarAndar(Vector2 posicao_rato)
         {
-            if (verificarRatoTerrenoMover(posicao_rato)!=null)
+            if (verificarRatoTerrenoMover(posicao_rato, tanque_seleccionado)!=null)
             {
-                Terreno terreno = verificarRatoTerrenoMover(posicao_rato);
+                Terreno terreno = verificarRatoTerrenoMover(posicao_rato, tanque_seleccionado);
                 //foi clicada uma posição de andamento válida
                 apontador = seta_rato_esperar;
                 if (tanque_seleccionado.equipa == Team.Coalition) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(
                     new Vector2(terreno.posicao.X + terreno.largura / 4, terreno.posicao.Y + terreno.altura / 4), 0f);
                 if (tanque_seleccionado.equipa == Team.Alliance) tanque_seleccionado.angulo_destino = tanque_seleccionado.anguloDoisVectores(
                     new Vector2(terreno.posicao.X + terreno.largura / 4, terreno.posicao.Y + terreno.altura / 4), MathHelper.Pi);
+                
+                Vector2 posicaoDestino = new Vector2(terreno.posicao.X + terreno.largura / 8, terreno.posicao.Y);
+
+                //Enviar informação de movimento para o servidor
+                SendMessageToServer(new GameMoveMessage(MessageType.Move, posicao_rato.X, posicao_rato.Y, tanque_seleccionado.ID));
+                
                 //mandar o tanque andar
-                tanque_seleccionado.alterarPosicaoDestino(new Vector2(terreno.posicao.X + terreno.largura / 8, terreno.posicao.Y), terreno_pode_mover, tanque_seleccionado);
+                tanque_seleccionado.alterarPosicaoDestino(posicaoDestino, terreno_pode_mover, tanque_seleccionado);
                 tanque_seleccionado.posicao_grelha = terreno.posicao_grelha;
                 terreno_seleccionado = null;
                 
@@ -767,40 +827,39 @@ namespace RobotWar
         #endregion
 
         #region Actualizar Jogadas
-        static public void actualizarJogadas(ContentManager Content)
+        static public void actualizarJogadas(Tank tank)
         {
-            jogadas++;
-            if (numeroTanquesActivosEquipa(lista_tanques, equipaJogador) >= 3)
+            if (tank != null && tank.equipa == equipaJogador)
             {
-                if (jogadas == 3)
+                //Só atualizamos as jogadas se formos nós que estivermos a jogar, e não os tanques do adversário a moverem-se
+                jogadas++;
+                if (numeroTanquesActivosEquipa(lista_tanques, equipaJogador) >= 3)
                 {
-                    executarActualizacaoJogadas(Content);
+                    if (jogadas == 3)
+                    {
+                        //Informar o servidor que o nosso turno acabou
+                        SendMessageToServer(new EndTurnMessage(MessageType.EndTurn));
+                    }
                 }
-            }
-            else
-            {
-                //O jogador activo tem menos que 3 tanques
-                if(jogadas == numeroTanquesActivosEquipa(lista_tanques,equipaJogador))
+                else
                 {
-                    executarActualizacaoJogadas(Content);
+                    //O jogador activo tem menos que 3 tanques
+                    if (jogadas == numeroTanquesActivosEquipa(lista_tanques, equipaJogador))
+                    {
+                        //Informar o servidor que o nosso turno acabou
+                        SendMessageToServer(new EndTurnMessage(MessageType.EndTurn));
+                    }
                 }
             }
         }
         #endregion
 
         #region Turnos
-        static public void executarActualizacaoJogadas(ContentManager Content)
+        static public void executarActualizacaoJogadas(ContentManager Content, Team equipaQueVaiJogar)
         {
             turnos++;
             jogadas = 0;
-            if (equipaJogador == Team.Alliance)
-            {
-                equipaJogador = Team.Coalition;
-            }
-            else
-            {
-                equipaJogador = Team.Alliance;
-            }
+            equipaTurno = equipaQueVaiJogar;
 
             //Actualizar os tanques que estiverem à espera para disparar
             foreach (Tank tanque in lista_tanques)
@@ -815,9 +874,9 @@ namespace RobotWar
                 }
             }
 
-            //int n_tanques = numeroTanquesActivosEquipa(lista_tanques, equipa_activa);
-            //int n_prontos = numeroTanquesProntosEquipa(lista_tanques, equipa_activa);
-            //turnBox.Initializing(equipa_activa, n_tanques, n_prontos, false);
+            int n_tanques = numeroTanquesActivosEquipa(lista_tanques, equipaQueVaiJogar);
+            int n_prontos = numeroTanquesProntosEquipa(lista_tanques, equipaQueVaiJogar);
+            turnBox.Initializing(equipaQueVaiJogar, n_tanques, n_prontos, false);
 
             //acinzentar adversarios
             acinzentarAdversarios();
@@ -897,10 +956,10 @@ namespace RobotWar
         #endregion
 
         #region Verificar se o rato esta por cima de um terreno para o qual se possa mover
-        private Terreno verificarRatoTerrenoMover(Vector2 posicao_rato)
+        private Terreno verificarRatoTerrenoMover(Vector2 posicao_rato, Tank tanque)
         {
             Terreno terreno_sob = null;
-            if (tanque_seleccionado != null)
+            if (tanque != null)
             {
                 foreach (Terreno terreno in terreno_pode_mover)
                 {
@@ -1197,7 +1256,7 @@ namespace RobotWar
             damageBox_x = tanque.posicao.X-21;
             damageBox_y = (tanque.posicao.Y + (tanque.textura.Height/2))-DamageBox.altura;
             Vector2 posicao_damageBox = new Vector2(damageBox_x, damageBox_y);
-            damageBox.Initializing(posicao_damageBox, tanque_seleccionado.power, dano,morreu);
+            damageBox.Initializing(posicao_damageBox, tanque_seleccionado.power, dano, morreu, tanque);
             
             //verificar o double shot
             if (tanque_seleccionado.double_shot)
@@ -1247,7 +1306,7 @@ namespace RobotWar
             for (int i = 1; i < 3; i++)
             {
                 //procurar para baixo
-                if ((posicao_original.X + i) < 11 && (posicao_original.X + i) > 0)
+                if ((posicao_original.X + i) < altura_grelha && (posicao_original.X + i) > 0)
                 {
                     if (!obstaculo(new Vector2((float)posicao_original.X + i, (float)posicao_original.Y),i,direccao.Baixo))
                     {
@@ -1258,7 +1317,7 @@ namespace RobotWar
                     if (i == 1)
                     {
                         //baixo e direita
-                        if ((posicao_original.X + i) <= 10 && (posicao_original.Y + i) < 20)
+                        if ((posicao_original.X + i) <= altura_grelha - 1 && (posicao_original.Y + i) < 20)
                         {
                             if (!obstaculo(new Vector2((float)posicao_original.X + i, (float)posicao_original.Y + i),i,direccao.BaixoDireita))
                             {
@@ -1268,7 +1327,7 @@ namespace RobotWar
                         }
 
                         //baixo e esquerda
-                        if ((posicao_original.X + i) <= 10 && (posicao_original.Y - i) >= 0)
+                        if ((posicao_original.X + i) <= altura_grelha - 1 && (posicao_original.Y - i) >= 0)
                         {
                             if (!obstaculo(new Vector2((float)posicao_original.X + 1, (float)posicao_original.Y - i),i,direccao.BaixoEsquerda))
                             {
@@ -1299,7 +1358,7 @@ namespace RobotWar
                     }
                 }
                 //procurar para cima
-                if ((posicao_original.X - i) >= 0 && (posicao_original.X - i) <= 10)
+                if ((posicao_original.X - i) >= 0 && (posicao_original.X - i) <= altura_grelha - 1)
                 {
                     if (!obstaculo(new Vector2((float)posicao_original.X - i, (float)posicao_original.Y),i,direccao.Cima))
                     {
@@ -1538,7 +1597,7 @@ namespace RobotWar
                     lista_powerups.RemoveAt(i);
                     lista_powerups.Add(gerarPowerupIndividual(Content));
                     damageBox.activo = true;
-                    damageBox.Initializing(tanque.posicao, tipo, passar_turno);
+                    damageBox.Initializing(tanque.posicao, tipo, true);
                 }
             }
             return apanhou;
