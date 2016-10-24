@@ -21,7 +21,7 @@ namespace RobotWar
         int tempoPassado;
 
         // tempo que fica cada frame da animação
-        int tempoFrame;
+        float tempoFrame;
 
         // numero total de frames da animação
         int nFrames;
@@ -55,7 +55,7 @@ namespace RobotWar
 
         public void Initialize(Texture2D texture, Vector2 position,
 int frameWidth, int frameHeight, int frameCount,
-int frametime, Color color, float scale, bool looping, float rotacao)
+float frametime, Color color, float scale, bool looping, float rotacao)
         {
             // Keep a local copy of the values passed in
             this.cor = color;

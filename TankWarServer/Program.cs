@@ -208,6 +208,16 @@ namespace TankWarServer
                     }
                     break;
                 case MessageType.Attack:
+                    //Serializar a mensagem para o tipo correto
+                    GameAttackMessage attackMessage = JsonConvert.DeserializeObject<GameAttackMessage>(jsonObj.ToString());
+                    //Encontrar o jogador que atacou
+                    Player jogadorAttack = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogoAttack = EncontrarAdversarioEJogo(jogadorAttack);
+                    if (adversarioEJogoAttack.Item1 != null)
+                    {
+                        //Reencaminhar a mensagem de movimento para o adversário
+                        SendMessage(attackMessage, adversarioEJogoAttack.Item1);
+                    }
                     break;
                 case MessageType.EndTurn:
                     //Mensagem não tem informação, é apenas um sinal, não é preciso desserializá-la

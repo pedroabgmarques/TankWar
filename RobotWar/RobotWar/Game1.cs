@@ -324,6 +324,8 @@ namespace RobotWar
                         listaMensagens.Add(moveMessage);
                         break;
                     case MessageType.Attack:
+                        GameAttackMessage attackMessage = JsonConvert.DeserializeObject<GameAttackMessage>(jsonObj.ToString());
+                        listaMensagens.Add(attackMessage);
                         break;
                     case MessageType.PowerUpList:
                         PowerUpListMessage powerUpListMessag = JsonConvert.DeserializeObject<PowerUpListMessage>(jsonObj.ToString());
@@ -413,19 +415,19 @@ namespace RobotWar
                     case MessageType.Move:
                         //O adversário moveu um tanque
                         GameMoveMessage moveMessage = (GameMoveMessage)msg;
-                        Console.WriteLine(moveMessage.msgNumber + ": Move message.");
-                        Tank tanqueMovido = lista_tanques.Find(t => t.equipa != equipaJogador && t.ID == moveMessage.tankID);
+                        Tank tanqueMovido = GetTankFromIDAndTeam(moveMessage.tankID, false);
                         if (tanqueMovido != null)
                         {
                             MoverTanqueNetwork(moveMessage, tanqueMovido);
                         }
                         break;
                     case MessageType.Attack:
+                        GameAttackMessage attackMessage = (GameAttackMessage)msg;
+                        atacarTanqueNetwork(attackMessage);
                         break;
                     case MessageType.PowerUpList:
                         //A lista de powerUps foi gerada pelo adversário e está-nos a ser enviada pelo servidor
                         PowerUpListMessage powerUpListMessage = (PowerUpListMessage)msg;
-                        Console.WriteLine(powerUpListMessage.msgNumber + ": Power Up List message.");
                         lista_powerups.Clear();
                         foreach (PowerUp power in powerUpListMessage.listaPowerUps)
                         {
@@ -439,7 +441,6 @@ namespace RobotWar
                     case MessageType.PowerUp:
                         //O adversário apanhou um powerUp, gerou um novo e estamos a recebê-lo
                         PowerUpMessage powerUpMessage = (PowerUpMessage)msg;
-                        Console.WriteLine(powerUpMessage.msgNumber + ": Power Up message.");
                         PowerUp powerUp = new PowerUp();
                         Vector2 posicao_grelhaPowerUp = powerUpMessage.powerUp.posicao_grelha;
                         Vector2 posicaoPowerUp = new Vector2((grelha[(int)posicao_grelhaPowerUp.X, (int)posicao_grelhaPowerUp.Y].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala + 3, (grelha[(int)posicao_grelhaPowerUp.X, (int)posicao_grelhaPowerUp.Y].posicao.Y));
@@ -468,6 +469,26 @@ namespace RobotWar
             {
                 Console.WriteLine("Erro no envio de mensagem para o servidor!");
                 statusBox.Initializing(equipaJogador, 0, 0, "No server connection =(", false, true);
+            }
+        }
+
+        private Tank GetTankFromIDAndTeam(int ID, bool sameTeam)
+        {
+            if (sameTeam)
+            {
+                return lista_tanques.Find(t => t.equipa == equipaJogador && t.ID == ID);
+            }
+            else
+            {
+                //Procurar ID na outra equipa
+                if (equipaJogador == Team.Alliance)
+                {
+                    return lista_tanques.Find(t => t.equipa == Team.Coalition && t.ID == ID);
+                }
+                else
+                {
+                    return lista_tanques.Find(t => t.equipa == Team.Alliance && t.ID == ID);
+                }
             }
         }
 
@@ -1215,11 +1236,11 @@ namespace RobotWar
             else { sinal_y = 1; }
 
             //calcular o tamanho e tempo da explosao de acordo com o dano retirado
-            int tempo_explosao;
+            float tempo_explosao;
             float escala_explosao;
             if (!morreu)
             {
-                tempo_explosao = 100 * (dano - 25) / (100 - 25);
+                tempo_explosao = 100 * (dano - 25) / (100f - 25f);
                 escala_explosao = 3 * (dano - 0.3f) / (100 - 0.3f);
             }
             else
@@ -1249,7 +1270,7 @@ namespace RobotWar
             */
             
             //encontrar o terreno que cai na posicao da explosao e alterar-lhe o contador de explosoes
-            for (int i = 0; i < 11; i++)
+            for (int i = 0; i < altura_grelha; i++)
             {
                 for (int j = 0; j < 20; j++)
                 {
@@ -1278,7 +1299,7 @@ namespace RobotWar
             damageBox_x = tanque.posicao.X-21;
             damageBox_y = (tanque.posicao.Y + (tanque.textura.Height/2))-DamageBox.altura;
             Vector2 posicao_damageBox = new Vector2(damageBox_x, damageBox_y);
-            damageBox.Initializing(posicao_damageBox, tanque_seleccionado.power, dano, morreu, tanque);
+            damageBox.Initializing(posicao_damageBox, tanque_seleccionado.power, dano, morreu, tanque, tanque_seleccionado, true);
             
             //verificar o double shot
             if (tanque_seleccionado.double_shot)
@@ -1302,9 +1323,129 @@ namespace RobotWar
             }
 
             tanque_seleccionado.seleccionado = false;
-            tanque_seleccionado = null;
             terreno_pode_mover.Clear();
             terreno_seleccionado = null;
+            
+            //Enviar ataque para o servidor
+            SendMessageToServer(new GameAttackMessage(MessageType.Attack, tanque_seleccionado.ID, tanque.ID, posicao, dano, tanque_seleccionado.angulo_actual));
+
+            tanque_seleccionado = null;
+        }
+
+        private void atacarTanqueNetwork(GameAttackMessage attackMessage)
+        {
+            bool morreu = false;
+
+            Tank tanqueAtacado = GetTankFromIDAndTeam(attackMessage.IDAtacado, true);
+            Tank tanqueAtacante = GetTankFromIDAndTeam(attackMessage.IDAtacante, false);
+
+            //retirar a vida ao tanque atacado
+            if (attackMessage.dano > 0) { tanqueAtacado.vida -= attackMessage.dano; }
+            if (tanqueAtacado.vida <= 0)
+            {
+                tanqueAtacado.activo = false;
+                if (tanqueAtacado.equipa == Team.Alliance)
+                {
+                    tanqueAtacado.textura = tanqueAtacado.alliance_destruido;
+                }
+                else
+                {
+                    tanqueAtacado.textura = tanqueAtacado.coalition_destuido;
+                }
+                morreu = true;
+            }
+
+
+            //calcular o tamanho e tempo da explosao de acordo com o dano retirado
+            float tempo_explosao;
+            float escala_explosao;
+            if (!morreu)
+            {
+                tempo_explosao = 100 * (attackMessage.dano - 25) / (100f - 25f);
+                escala_explosao = 3 * (attackMessage.dano - 0.3f) / (100 - 0.3f);
+            }
+            else
+            {
+                tempo_explosao = 80;
+                escala_explosao = 3f;
+            }
+
+            explode = new Animacao();
+            explode.Initialize(explosao, attackMessage.posicao, 134, 134, 12, tempo_explosao, Color.White, escala_explosao, false, 0f);
+            lista_animacoes.Add(explode);
+
+            //fogacho no tanque que dispara
+            //NÃO CONSIGO POR O FOGACHO NA PONTINHA DO TANQUE POR CAUSA DAS ROTAÇÕES! ver isto melhor
+
+            /*
+            float posicao_x_fogacho = (tanque_seleccionado.posicao.X + (tanque_seleccionado.textura.Width / 4));
+            float posicao_y_fogacho = (tanque_seleccionado.posicao.Y);
+            Vector2 posicao_fogacho = new Vector2(posicao_x_fogacho, posicao_y_fogacho);
+            fogacho = new Animacao();
+            fogacho.Initialize(explosao, posicao_fogacho, 134, 134, 12, 25, Color.White, 0.2f, false,0f);
+            lista_animacoes.Add(fogacho);
+            */
+
+            //encontrar o terreno que cai na posicao da explosao e alterar-lhe o contador de explosoes
+            for (int i = 0; i < altura_grelha; i++)
+            {
+                for (int j = 0; j < 20; j++)
+                {
+                    Terreno terreno = grelha[i, j];
+                    Rectangle rect_terreno = new Rectangle((int)terreno.posicao.X, (int)terreno.posicao.Y, terreno.largura / 2, terreno.altura / 2);
+                    Rectangle rect_explosao = new Rectangle((int)attackMessage.posicao.X, (int)attackMessage.posicao.Y, 1, 1);
+                    if (rect_explosao.Intersects(rect_terreno))
+                    {
+                        if (!morreu)
+                        {
+                            terreno.explosoes++;
+                        }
+                        else
+                        {
+                            terreno.explosoes = 6;
+                            terreno.textura = textura_cratera_1;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            damageBox.activo = true;
+            //mostrar a damageBox
+            float damageBox_x, damageBox_y;
+            damageBox_x = tanqueAtacado.posicao.X - 21;
+            damageBox_y = (tanqueAtacado.posicao.Y + (tanqueAtacado.textura.Height / 2)) - DamageBox.altura;
+            Vector2 posicao_damageBox = new Vector2(damageBox_x, damageBox_y);
+            damageBox.Initializing(posicao_damageBox, tanqueAtacante.power, attackMessage.dano, morreu, tanqueAtacado, tanqueAtacante, false);
+
+            //verificar o double shot
+            if (tanqueAtacante.double_shot)
+            {
+                tanqueAtacante.double_shot = false;
+            }
+            else
+            {
+                //não pode disparar durante 5 turnos!    
+                tanqueAtacante.turnos_espera_disparar = 5;
+            }
+
+            tanqueAtacante.pode_mover = false;
+            tanqueAtacante.cor = Color.Red;
+
+            //se tem mega-power, repor o power
+            if (tanqueAtacante.mega_power)
+            {
+                tanqueAtacante.power = tanqueAtacante.power_anterior;
+                tanqueAtacante.mega_power = false;
+            }
+
+            tanqueAtacante.angulo_destino = attackMessage.rotacao;
+
+            tanqueAtacante.seleccionado = false;
+            tanqueAtacante = null;
+            terreno_pode_mover.Clear();
+            tanqueAtacante = null;
+
         }
         #endregion
 
