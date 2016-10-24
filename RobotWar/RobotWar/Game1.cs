@@ -64,7 +64,7 @@ namespace RobotWar
         int n_tanques = 20;
 
         //altura da grelha
-        int altura_grelha = 8;
+        static int altura_grelha = 8;
 
         //contador de jogadas
         static int jogadas;
@@ -329,6 +329,10 @@ namespace RobotWar
                         PowerUpListMessage powerUpListMessag = JsonConvert.DeserializeObject<PowerUpListMessage>(jsonObj.ToString());
                         listaMensagens.Add(powerUpListMessag);
                         break;
+                    case MessageType.PowerUp:
+                        PowerUpMessage powerUpMessag = JsonConvert.DeserializeObject<PowerUpMessage>(jsonObj.ToString());
+                        listaMensagens.Add(powerUpMessag);
+                        break;
                     default:
                         break;
                 }
@@ -422,14 +426,25 @@ namespace RobotWar
                         //A lista de powerUps foi gerada pelo adversário e está-nos a ser enviada pelo servidor
                         PowerUpListMessage powerUpListMessage = (PowerUpListMessage)msg;
                         Console.WriteLine(powerUpListMessage.msgNumber + ": Power Up List message.");
+                        lista_powerups.Clear();
                         foreach (PowerUp power in powerUpListMessage.listaPowerUps)
                         {
                             PowerUp powerup = new PowerUp();
                             Vector2 posicao_grelha = power.posicao_grelha;
                             Vector2 posicao = new Vector2((grelha[(int)posicao_grelha.X, (int)posicao_grelha.Y].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala + 3, (grelha[(int)posicao_grelha.X, (int)posicao_grelha.Y].posicao.Y));
-                            powerup.Initializing(power.tipo, posicao, posicao_grelha, Content);
+                            powerup.Initializing(power.tipo, posicao, posicao_grelha, Content, power.duracao);
                             lista_powerups.Add(powerup);
                         }
+                        break;
+                    case MessageType.PowerUp:
+                        //O adversário apanhou um powerUp, gerou um novo e estamos a recebê-lo
+                        PowerUpMessage powerUpMessage = (PowerUpMessage)msg;
+                        Console.WriteLine(powerUpMessage.msgNumber + ": Power Up message.");
+                        PowerUp powerUp = new PowerUp();
+                        Vector2 posicao_grelhaPowerUp = powerUpMessage.powerUp.posicao_grelha;
+                        Vector2 posicaoPowerUp = new Vector2((grelha[(int)posicao_grelhaPowerUp.X, (int)posicao_grelhaPowerUp.Y].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala + 3, (grelha[(int)posicao_grelhaPowerUp.X, (int)posicao_grelhaPowerUp.Y].posicao.Y));
+                        powerUp.Initializing(powerUpMessage.powerUp.tipo, posicaoPowerUp, posicao_grelhaPowerUp, Content, powerUpMessage.powerUp.duracao);
+                        lista_powerups.Add(powerUp);
                         break;
                     default:
                         break;
@@ -567,9 +582,9 @@ namespace RobotWar
                 }
                 else
                 {
-                    posicao_grelha.X = gerador_numeros.Next(11);
+                    posicao_grelha.X = gerador_numeros.Next(altura_grelha);
                 }
-                posicao_grelha.Y = gerador_numeros.Next(20);
+                posicao_grelha.Y = gerador_numeros.Next(10); //ALTERADO: original 20
                 //verificar se existem robos nesta posicao
                 foreach (Tank tanque in lista_tanques)
                 {
@@ -733,21 +748,28 @@ namespace RobotWar
         static private void actualizarPowerups(ContentManager Content)
         {
 
+            bool alterada = false;
             for (int i = lista_powerups.Count - 1; i >= 0; i--)
             {
                 lista_powerups[i].duracao--;
                 if (lista_powerups[i].duracao == 0)
                 {
                     lista_powerups.RemoveAt(i);
+                    alterada = true;
                 }
             }
 
             while (lista_powerups.Count < 3)
             {
                 lista_powerups.Add(gerarPowerupIndividual(Content));
+                alterada = true;
             }
 
-
+            if (alterada && equipaJogador == equipaTurno)
+            {
+                SendMessageToServer(new PowerUpListMessage(MessageType.PowerUpList, lista_powerups));
+            }
+            
         }
         #endregion
 
@@ -821,7 +843,7 @@ namespace RobotWar
             if (n_powerup == 4) tipo = tipo_PowerUp.vida;
             Vector2 posicao_grelha = gerarPosicaoGrelhaPowerup();
             Vector2 posicao = new Vector2((grelha[(int)posicao_grelha.X, (int)posicao_grelha.Y].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala + 3, (grelha[(int)posicao_grelha.X, (int)posicao_grelha.Y].posicao.Y));
-            powerup.Initializing(tipo, posicao, posicao_grelha, Content);
+            powerup.Initializing(tipo, posicao, posicao_grelha, Content, 5);
             return powerup;
         }
         #endregion
@@ -1571,7 +1593,7 @@ namespace RobotWar
                 {
                     //tanque apanhou um powerup!
                     apanhou = true;
-                    switch (lista_powerups[i].tipo) 
+                    switch (lista_powerups[i].tipo)
                     {
                         case tipo_PowerUp.double_turn:
                             tanque.double_turn = true;
@@ -1595,9 +1617,18 @@ namespace RobotWar
                     }
                     tipo_PowerUp tipo = lista_powerups[i].tipo;
                     lista_powerups.RemoveAt(i);
-                    lista_powerups.Add(gerarPowerupIndividual(Content));
+                    if (equipaJogador == equipaTurno)
+                    {
+                        PowerUp powerUp = gerarPowerupIndividual(Content);
+                        lista_powerups.Add(powerUp);
+                        //Estamos a jogar e apanhámos um powerUp, geramos um novo e enviamos a informação do novo para o servidor
+                        SendMessageToServer(new PowerUpMessage(MessageType.PowerUp, powerUp));
+                    }
+                    
                     damageBox.activo = true;
-                    damageBox.Initializing(tanque.posicao, tipo, true);
+                    damageBox.Initializing(tanque.posicao, tipo, passar_turno, tanque);
+
+                    
                 }
             }
             return apanhou;

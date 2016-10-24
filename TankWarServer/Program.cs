@@ -221,6 +221,7 @@ namespace TankWarServer
                         //Enviar mensagens para os jogadores com a trocar de turnos
                         SendMessage(new ControlMessage(MessageType.Control, ControlCommand.AdversaryTurn), jogadorEndTurn);
                         SendMessage(new ControlMessage(MessageType.Control, ControlCommand.YourTurn), adversarioEJogoEndTurn.Item1);
+                        Console.WriteLine("\nMudança de turno.");
                     }
                     
                     break;
@@ -232,6 +233,18 @@ namespace TankWarServer
                     //Reencaminhar a lista de powerUps para o adversario
                     SendMessage(powerUpListMessage, adversarioEJogopowerUpList.Item1);
                     Console.WriteLine("\nLista de powerups enviado para o adversário: " + adversarioEJogopowerUpList.Item1.Client.Client.RemoteEndPoint);
+                    break;
+                case MessageType.PowerUp:
+                    //Serializar a mensagem para o tipo correto
+                    PowerUpMessage powerUpMessage = JsonConvert.DeserializeObject<PowerUpMessage>(jsonObj.ToString());
+                    //Encontrar o jogador que moveu
+                    Player jogadorPowerUp = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogoPowerUp = EncontrarAdversarioEJogo(jogadorPowerUp);
+                    if (adversarioEJogoPowerUp.Item1 != null)
+                    {
+                        //Reencaminhar a mensagem de movimento para o adversário
+                        SendMessage(powerUpMessage, adversarioEJogoPowerUp.Item1);
+                    }
                     break;
                 default:
                     break;
@@ -258,6 +271,14 @@ namespace TankWarServer
                         adversarioEJogo = new Tuple<Player, Game>(jogo.player1, jogo);
                     }
                 }
+                else
+                {
+                    Console.WriteLine("\nJOGO NÃO ENCONTRADO! Algo de muito errado aconteceu =(");
+                }
+            }
+            else
+            {
+                Console.WriteLine("\nJOGO NÃO ENCONTRADO! Algo de muito errado aconteceu =(");
             }
             return adversarioEJogo;
         }

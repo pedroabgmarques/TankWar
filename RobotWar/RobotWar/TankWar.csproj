@@ -138,6 +138,7 @@
     <Compile Include="Network\Message.cs" />
     <Compile Include="Network\MessageType.cs" />
     <Compile Include="Network\PowerUpListMessage.cs" />
+    <Compile Include="Network\PowerUpMessage.cs" />
     <Compile Include="PowerUp.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Program.cs" />

@@ -36,7 +36,7 @@ namespace RobotWar
             this.tank = tank;
         }
 
-        public void Initializing(Vector2 posicao_inicial, tipo_PowerUp tipo, bool passar_turno)
+        public void Initializing(Vector2 posicao_inicial, tipo_PowerUp tipo, bool passar_turno, Tank tank)
         {
             this.posicao_inicial = posicao_inicial;
             this.posicao_actual_y = (int)posicao_inicial.Y;
@@ -45,6 +45,7 @@ namespace RobotWar
             this.tipo = tipo;
             this.ha_dano = false;
             this.passar_turno = passar_turno;
+            this.tank = tank;
         }
 
         public void LoadContent(ContentManager content, GraphicsDevice graphic)

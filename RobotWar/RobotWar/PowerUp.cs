@@ -25,10 +25,10 @@ namespace RobotWar
         public int duracao;
         SpriteFont tahoma_20_bold;
 
-        public void Initializing(tipo_PowerUp tipo, Vector2 posicao, Vector2 posicao_grelha, ContentManager content)
+        public void Initializing(tipo_PowerUp tipo, Vector2 posicao, Vector2 posicao_grelha, ContentManager content, int duracao)
         {
             this.tipo = tipo;
-            duracao = 5;
+            this.duracao = duracao;
             this.posicao = posicao;
             this.posicao_grelha = posicao_grelha;
 
