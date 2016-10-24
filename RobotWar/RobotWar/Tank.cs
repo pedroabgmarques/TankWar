@@ -15,6 +15,7 @@ namespace RobotWar
         public int vida;
         public Team equipa;
         public Vector2 posicao_grelha;
+        public Vector2 posicao_grelhaOriginal;
         static public float escala=0.5f;
         public int ID;
         public bool seleccionado;
@@ -27,6 +28,8 @@ namespace RobotWar
         SpriteFont font;
         public bool pode_mover;
         public Color cor;
+        public Vector2 posicaoOriginal;
+        public int powerOriginal;
 
         //powerups
         public bool sniper, double_shot, mega_power, double_turn;
@@ -58,8 +61,10 @@ namespace RobotWar
         {
             this.textura = textura;
             this.posicao = posicao;
+            this.posicaoOriginal = posicao;
             this.power = gerador_numeros.Next(50)+50;
-            this.vida = 200;
+            this.powerOriginal = power;
+            this.vida = Game1.vidaInicialTanques; 
             this.activo = true;
 
             this.angulo_original = MathHelper.Pi;

@@ -17,6 +17,8 @@ namespace TankWar.Network
         Attack,
         EndTurn,
         PowerUpList,
-        PowerUp
+        PowerUp,
+        PlayerWon,
+        TankList
     }
 }

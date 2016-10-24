@@ -59,12 +59,18 @@ namespace RobotWar
         static List<PowerUp> lista_powerups;
         static Terreno[,] grelha;
         Terreno terreno_seleccionado;
+        static public bool gameOver;
 
+        #region Settings
         //nº de tanques de cada equipa
-        int n_tanques = 20;
-
+        static int n_tanques = 14;
         //altura da grelha
-        static int altura_grelha = 8;
+        static int altura_grelha = 10;
+        //vida dos tanques
+        static public int vidaInicialTanques = 200;
+        //Numero de turnos para recarregar
+        int nTurnosCoolDown = 3;
+        #endregion
 
         //contador de jogadas
         static int jogadas;
@@ -84,8 +90,8 @@ namespace RobotWar
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
-            graphics.PreferredBackBufferWidth = 800;
-            graphics.PreferredBackBufferHeight = 600;
+            graphics.PreferredBackBufferWidth = (n_tanques + 1) * 66 + 44;
+            graphics.PreferredBackBufferHeight = altura_grelha * 66 + 40;
             graphics.PreferMultiSampling = true;
             graphics.IsFullScreen = false;
         }
@@ -112,12 +118,14 @@ namespace RobotWar
 
             infoBox.Initializing(lista_tanques);
 
+            gameOver = false;
+
             equipaJogador = Team.NoTeam;
             equipaTurno = Team.NoTeam;
 
 
             //Network
-            ConnectToServer("localhost", 7777);
+            ConnectToServer("cyclesrenderer.ddns.net", 7777);
 
             base.Initialize();
         }
@@ -167,9 +175,6 @@ namespace RobotWar
             gerarGrelha();
             gerarTanques1();
             gerarTanques2();
-
-            //acinzentar adversarios
-            acinzentarAdversarios();
 
             //Load dos conteúdos dos PowerUps
             foreach (PowerUp powerup in lista_powerups)
@@ -328,12 +333,16 @@ namespace RobotWar
                         listaMensagens.Add(attackMessage);
                         break;
                     case MessageType.PowerUpList:
-                        PowerUpListMessage powerUpListMessag = JsonConvert.DeserializeObject<PowerUpListMessage>(jsonObj.ToString());
-                        listaMensagens.Add(powerUpListMessag);
+                        PowerUpListMessage powerUpListMessage = JsonConvert.DeserializeObject<PowerUpListMessage>(jsonObj.ToString());
+                        listaMensagens.Add(powerUpListMessage);
                         break;
                     case MessageType.PowerUp:
-                        PowerUpMessage powerUpMessag = JsonConvert.DeserializeObject<PowerUpMessage>(jsonObj.ToString());
-                        listaMensagens.Add(powerUpMessag);
+                        PowerUpMessage powerUpMessage = JsonConvert.DeserializeObject<PowerUpMessage>(jsonObj.ToString());
+                        listaMensagens.Add(powerUpMessage);
+                        break;
+                    case MessageType.TankList:
+                        TankListMessage tankListMessage = JsonConvert.DeserializeObject<TankListMessage>(jsonObj.ToString());
+                        listaMensagens.Add(tankListMessage);
                         break;
                     default:
                         break;
@@ -357,33 +366,38 @@ namespace RobotWar
                             case ControlCommand.TeamAlliance:
                                 equipaJogador = Team.Alliance;
                                 statusBox.Initializing(equipaJogador, 0, 0, "Team Alliance", true, false);
-                                acinzentarAdversarios();
                                 break;
                             case ControlCommand.TeamCoalition:
                                 equipaJogador = Team.Coalition;
                                 statusBox.Initializing(equipaJogador, 0, 0, "Team Coalition", true, false);
-                                acinzentarAdversarios();
                                 break;
                             case ControlCommand.Lobby:
                                 statusBox.Initializing(equipaJogador, 0, 0, "Waiting for player 2..", false, true);
                                 break;
                             case ControlCommand.StartGameYourTurn:
-                                turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, Team.Coalition), numeroTanquesProntosEquipa(lista_tanques, Team.Coalition), false);
+                                turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, equipaJogador), numeroTanquesProntosEquipa(lista_tanques, equipaJogador), false, false);
                                 equipaTurno = equipaJogador;
                                 //Começamos nós a jogar, criamos a lista de powerups e enviamos para o servidor
+                                lista_powerups.Clear();
                                 gerarPowerUps();
+                                ReporJogo();
                                 SendMessageToServer(new PowerUpListMessage(MessageType.PowerUpList, lista_powerups));
+                                //Enviamos também para o servidor uma lista de tuplos, em que cada tuplo contém:
+                                // 1 - (Team) Equipa
+                                // 2 - (int) ID do tanque
+                                // 3 - (int) Power do tanque
+                                // 4 - (int) Vida do tanque
+                                List<Tuple<Team, int, int, int>> listaPowersEVida = new List<Tuple<Team, int, int, int>>();
+                                foreach (Tank tanque in lista_tanques)
+                                {
+                                    listaPowersEVida.Add(new Tuple<Team, int, int, int>(tanque.equipa, tanque.ID, tanque.power, tanque.vida));
+                                }
+                                SendMessageToServer(new TankListMessage(MessageType.TankList, listaPowersEVida));
                                 break;
                             case ControlCommand.StartGameAdversaryTurn:
+                                equipaTurno = GetAdversario();
+                                ReporJogo();
                                 statusBox.Initializing(equipaJogador, 0, 0, "Player 2 turn..", true, false);
-                                if (equipaJogador == Team.Alliance)
-                                {
-                                    equipaTurno = Team.Coalition;
-                                }
-                                else
-                                {
-                                    equipaTurno = Team.Alliance;
-                                }
                                 break;
                             case ControlCommand.YourTurn:
                                 executarActualizacaoJogadas(Content, equipaJogador);
@@ -401,8 +415,10 @@ namespace RobotWar
                                 executarActualizacaoJogadas(Content, equipaAJogar);
                                 break;
                             case ControlCommand.GameEndYouWin:
+                                turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, equipaJogador), numeroTanquesProntosEquipa(lista_tanques, equipaJogador), true, false);
                                 break;
                             case ControlCommand.GameEndAdversaryWins:
+                                turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, equipaJogador), numeroTanquesProntosEquipa(lista_tanques, equipaJogador), true, true);
                                 break;
                             case ControlCommand.AdversaryQuit:
                                 statusBox.Initializing(equipaJogador, 0, 0, "Adversary quit!", false, true);
@@ -446,6 +462,16 @@ namespace RobotWar
                         Vector2 posicaoPowerUp = new Vector2((grelha[(int)posicao_grelhaPowerUp.X, (int)posicao_grelhaPowerUp.Y].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala + 3, (grelha[(int)posicao_grelhaPowerUp.X, (int)posicao_grelhaPowerUp.Y].posicao.Y));
                         powerUp.Initializing(powerUpMessage.powerUp.tipo, posicaoPowerUp, posicao_grelhaPowerUp, Content, powerUpMessage.powerUp.duracao);
                         lista_powerups.Add(powerUp);
+                        break;
+                    case MessageType.TankList:
+                        //O adversário gerou a sua lista de tanques e envia-nos a vida e power de cada tanque
+                        TankListMessage tankListMessage = (TankListMessage)msg;
+                        foreach (Tuple<Team, int, int, int> tuple in tankListMessage.listaPowersEVida)
+                        {
+                            Tank tanque = lista_tanques.Find(t => t.equipa == tuple.Item1 && t.ID == tuple.Item2);
+                            tanque.power = tuple.Item3;
+                            tanque.vida = tuple.Item4;
+                        }
                         break;
                     default:
                         break;
@@ -494,6 +520,32 @@ namespace RobotWar
 
         #endregion
 
+        private void ReporJogo()
+        {
+            jogadas = 0;
+            foreach (Tank tanque in lista_tanques)
+            {
+                tanque.posicao = tanque.posicaoOriginal;
+                tanque.posicao_destino = tanque.posicaoOriginal;
+                tanque.angulo_actual = MathHelper.Pi;
+                tanque.angulo_destino = MathHelper.Pi;
+                tanque.angulo_original = MathHelper.Pi;
+                tanque.power = tanque.powerOriginal;
+                tanque.vida = Game1.vidaInicialTanques;
+                tanque.seleccionado = false;
+                tanque.cor = Color.White;
+                tanque.pode_mover = true;
+                tanque_seleccionado = null;
+                tanque.double_turn = false;
+                tanque.double_shot = false;
+                tanque.mega_power = false;
+                tanque.sniper = false;
+                tanque.turnos_espera_disparar = 0;
+                tanque.activo = true;
+                tanque.em_movimento = false;
+                tanque.posicao_grelha = tanque.posicao_grelhaOriginal;
+            }
+        }
 
         private void MoverTanqueNetwork(GameMoveMessage moveMessage, Tank tanqueMovido)
         {
@@ -539,6 +591,7 @@ namespace RobotWar
                 
                 posicao_tanque1 = new Vector2((grelha[0, i].posicao.X)+(textura_terreno.Width*Terreno.escala/2)-textura_tanque1.Width*Tank.escala/2, grelha[0, i].posicao.Y);
                 tank.posicao_grelha = new Vector2(0f, i);
+                tank.posicao_grelhaOriginal = tank.posicao_grelha;
                 
                 
                 tank.Initialiazing(textura_tanque1, posicao_tanque1, SpriteEffects.FlipVertically, Team.Alliance,gerador_numeros,i);
@@ -570,6 +623,7 @@ namespace RobotWar
 
                 posicao_tanque2 = new Vector2((grelha[0, i].posicao.X) + (textura_terreno.Width * Terreno.escala / 2) - textura_tanque1.Width * Tank.escala / 2, grelha[altura_grelha - 1, i].posicao.Y);
                 tank.posicao_grelha = new Vector2(altura_grelha - 1, i);
+                tank.posicao_grelhaOriginal = tank.posicao_grelha;
                 
 
                 tank.Initialiazing(textura_tanque2, posicao_tanque2,SpriteEffects.None, Team.Coalition,gerador_numeros,i);
@@ -605,7 +659,7 @@ namespace RobotWar
                 {
                     posicao_grelha.X = gerador_numeros.Next(altura_grelha);
                 }
-                posicao_grelha.Y = gerador_numeros.Next(10); //ALTERADO: original 20
+                posicao_grelha.Y = gerador_numeros.Next(n_tanques + 1); //ALTERADO: valor original 20
                 //verificar se existem robos nesta posicao
                 foreach (Tank tanque in lista_tanques)
                 {
@@ -632,13 +686,13 @@ namespace RobotWar
         #region Gerar grelha
         private void gerarGrelha()
         {
-            grelha = new Terreno[altura_grelha, n_tanques];
+            grelha = new Terreno[altura_grelha, n_tanques + 1];
             Vector2 posicao_terreno, posicao_grelha;
             int offset_x = 22;
             int offset_y = 22;
             for (int i = 0; i < altura_grelha; i++)
             {
-                for (int j = 0; j < n_tanques; j++)
+                for (int j = 0; j < n_tanques + 1; j++)
                 {
                     Terreno terreno = new Terreno();
                     posicao_terreno = new Vector2(GraphicsDevice.Viewport.TitleSafeArea.X+offset_x, GraphicsDevice.Viewport.TitleSafeArea.Y+offset_y);
@@ -658,7 +712,7 @@ namespace RobotWar
         {
             for (int i = 0; i < altura_grelha; i++)
             {
-                for (int j = 0; j < 20; j++)
+                for (int j = 0; j < n_tanques + 1; j++)
                 {
                     Terreno terreno = grelha[i, j];
                     if (terreno.explosoes == 0)
@@ -739,6 +793,7 @@ namespace RobotWar
             foreach (Tank tanque in lista_tanques)
             {
                 tanque.Update(gameTime, lista_tanques, equipaJogador, Content);
+                acinzentarAdversarios(tanque);
             }
 
             //update explosoes
@@ -754,13 +809,32 @@ namespace RobotWar
 
         private void actualizarGameOver()
         {
-            if (numeroTanquesActivosEquipa(lista_tanques, Team.Alliance) == 0)
+
+            Team adversario = GetAdversario();
+
+            if (numeroTanquesActivosEquipa(lista_tanques, adversario) == 0 && !gameOver)
             {
-                turnBox.Initializing(Team.Coalition, numeroTanquesActivosEquipa(lista_tanques, Team.Coalition), numeroTanquesProntosEquipa(lista_tanques, Team.Coalition), true);
+                //Ganhámos!
+                SendMessageToServer(new PlayerWonMessage(MessageType.PlayerWon));
+                gameOver = true;
             }
-            if (numeroTanquesActivosEquipa(lista_tanques, Team.Coalition) == 0)
+        }
+
+        private void actualizarGameOverNetwork()
+        {
+            turnBox.Initializing(equipaJogador, numeroTanquesActivosEquipa(lista_tanques, equipaJogador), numeroTanquesProntosEquipa(lista_tanques, equipaJogador), true, true);
+            gameOver = true;
+        }
+
+        private Team GetAdversario()
+        {
+            if (equipaJogador == Team.Alliance)
             {
-                turnBox.Initializing(Team.Alliance, numeroTanquesActivosEquipa(lista_tanques, Team.Alliance), numeroTanquesProntosEquipa(lista_tanques, Team.Alliance), true);
+                return Team.Coalition;
+            }
+            else
+            {
+                return Team.Alliance;
             }
         }
         #endregion
@@ -769,26 +843,24 @@ namespace RobotWar
         static private void actualizarPowerups(ContentManager Content)
         {
 
-            bool alterada = false;
             for (int i = lista_powerups.Count - 1; i >= 0; i--)
             {
                 lista_powerups[i].duracao--;
                 if (lista_powerups[i].duracao == 0)
                 {
                     lista_powerups.RemoveAt(i);
-                    alterada = true;
                 }
             }
 
             while (lista_powerups.Count < 3)
             {
-                lista_powerups.Add(gerarPowerupIndividual(Content));
-                alterada = true;
-            }
-
-            if (alterada && equipaJogador == equipaTurno)
-            {
-                SendMessageToServer(new PowerUpListMessage(MessageType.PowerUpList, lista_powerups));
+                if (equipaJogador == equipaTurno)
+                {
+                    PowerUp powerUp = gerarPowerupIndividual(Content);
+                    lista_powerups.Add(powerUp);
+                    //Estamos a jogar e um powerUp desapareceu, geramos um novo e enviamos a informação do novo para o servidor
+                    SendMessageToServer(new PowerUpMessage(MessageType.PowerUp, powerUp));
+                }
             }
             
         }
@@ -872,7 +944,7 @@ namespace RobotWar
         #region Actualizar Jogadas
         static public void actualizarJogadas(Tank tank)
         {
-            if (tank != null && tank.equipa == equipaJogador)
+            if (tank != null && tank.equipa == equipaJogador && !gameOver)
             {
                 //Só atualizamos as jogadas se formos nós que estivermos a jogar, e não os tanques do adversário a moverem-se
                 jogadas++;
@@ -919,26 +991,28 @@ namespace RobotWar
 
             int n_tanques = numeroTanquesActivosEquipa(lista_tanques, equipaQueVaiJogar);
             int n_prontos = numeroTanquesProntosEquipa(lista_tanques, equipaQueVaiJogar);
-            turnBox.Initializing(equipaQueVaiJogar, n_tanques, n_prontos, false);
-
-            //acinzentar adversarios
-            acinzentarAdversarios();
+            turnBox.Initializing(equipaQueVaiJogar, n_tanques, n_prontos, false, false);
 
             actualizarPowerups(Content);
         }
 
-        static private void acinzentarAdversarios()
+        static private void acinzentarAdversarios(Tank tanque)
         {
-            foreach (Tank tanque in lista_tanques)
+            if (tanque.equipa != equipaTurno)
             {
-                if (tanque.equipa != equipaJogador && tanque.activo)
-                {
-                    tanque.cor = Color.Yellow;
-                }
-                else
+                tanque.cor = Color.Yellow;
+            }
+            else
+            {
+                if (tanque.pode_mover)
                 {
                     tanque.cor = Color.White;
                 }
+                else
+                {
+                    tanque.cor = Color.Red;
+                }
+                
             }
         }
         #endregion
@@ -1272,7 +1346,7 @@ namespace RobotWar
             //encontrar o terreno que cai na posicao da explosao e alterar-lhe o contador de explosoes
             for (int i = 0; i < altura_grelha; i++)
             {
-                for (int j = 0; j < 20; j++)
+                for (int j = 0; j < n_tanques + 1; j++)
                 {
                     Terreno terreno = grelha[i, j];
                     Rectangle rect_terreno = new Rectangle((int)terreno.posicao.X, (int)terreno.posicao.Y, terreno.largura / 2, terreno.altura / 2);
@@ -1309,7 +1383,7 @@ namespace RobotWar
             else
             {
                 //não pode disparar durante 5 turnos!    
-                tanque_seleccionado.turnos_espera_disparar = 5;
+                tanque_seleccionado.turnos_espera_disparar = nTurnosCoolDown;
             }
             
             tanque_seleccionado.pode_mover = false;
@@ -1389,7 +1463,7 @@ namespace RobotWar
             //encontrar o terreno que cai na posicao da explosao e alterar-lhe o contador de explosoes
             for (int i = 0; i < altura_grelha; i++)
             {
-                for (int j = 0; j < 20; j++)
+                for (int j = 0; j < n_tanques + 1; j++)
                 {
                     Terreno terreno = grelha[i, j];
                     Rectangle rect_terreno = new Rectangle((int)terreno.posicao.X, (int)terreno.posicao.Y, terreno.largura / 2, terreno.altura / 2);
@@ -1426,7 +1500,7 @@ namespace RobotWar
             else
             {
                 //não pode disparar durante 5 turnos!    
-                tanqueAtacante.turnos_espera_disparar = 5;
+                tanqueAtacante.turnos_espera_disparar = nTurnosCoolDown;
             }
 
             tanqueAtacante.pode_mover = false;
@@ -1480,7 +1554,7 @@ namespace RobotWar
                     if (i == 1)
                     {
                         //baixo e direita
-                        if ((posicao_original.X + i) <= altura_grelha - 1 && (posicao_original.Y + i) < 20)
+                        if ((posicao_original.X + i) <= altura_grelha - 1 && (posicao_original.Y + i) < n_tanques + 1)
                         {
                             if (!obstaculo(new Vector2((float)posicao_original.X + i, (float)posicao_original.Y + i),i,direccao.BaixoDireita))
                             {
@@ -1512,7 +1586,7 @@ namespace RobotWar
                     }
                 }
                 //procurar para a direita
-                if ((posicao_original.Y + i) < 20)
+                if ((posicao_original.Y + i) < n_tanques + 1)
                 {
                     if (!obstaculo(new Vector2((float)posicao_original.X, (float)posicao_original.Y + i),i,direccao.Direita))
                     {
@@ -1532,7 +1606,7 @@ namespace RobotWar
                     if (i == 1)
                     {
                         //cima e direita
-                        if ((posicao_original.X - i) >= 0 && (posicao_original.Y + i) < 20)
+                        if ((posicao_original.X - i) >= 0 && (posicao_original.Y + i) < n_tanques + 1)
                         {
                             if (!obstaculo(new Vector2((float)posicao_original.X - i, (float)posicao_original.Y + i),i,direccao.CimaDireita))
                             {

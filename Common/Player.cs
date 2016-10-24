@@ -50,6 +50,15 @@ namespace Common
             get { return playerStatus; }
             set { playerStatus = value; }
         }
+
+        private Game currentGame;
+
+        public Game CurrentGame
+        {
+            get { return currentGame; }
+            set { currentGame = value; }
+        }
+        
         
 
         public Player(TcpClient client, Team equipa)

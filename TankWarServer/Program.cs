@@ -242,7 +242,6 @@ namespace TankWarServer
                     Tuple<Player, Game> adversarioEJogopowerUpList = EncontrarAdversarioEJogo(jogadorPowerUpList);
                     //Reencaminhar a lista de powerUps para o adversario
                     SendMessage(powerUpListMessage, adversarioEJogopowerUpList.Item1);
-                    Console.WriteLine("\nLista de powerups enviado para o adversário: " + adversarioEJogopowerUpList.Item1.Client.Client.RemoteEndPoint);
                     break;
                 case MessageType.PowerUp:
                     //Serializar a mensagem para o tipo correto
@@ -256,40 +255,44 @@ namespace TankWarServer
                         SendMessage(powerUpMessage, adversarioEJogoPowerUp.Item1);
                     }
                     break;
+                case MessageType.PlayerWon:
+                    //Mensagem não tem informação, é apenas um sinal, não é preciso desserializá-la
+                    //Encontrar o jogador que ganhou o jogo
+                    Player jogadorPlayerWon = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogoPlayerWon = EncontrarAdversarioEJogo(jogadorPlayerWon);
+                    if (adversarioEJogoPlayerWon.Item1 != null)
+                    {
+                        //Enviar mensagem para os jogadores a informar quem ganhou e quem perdeu
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.GameEndYouWin), jogadorPlayerWon);
+                        SendMessage(new ControlMessage(MessageType.Control, ControlCommand.GameEndAdversaryWins), adversarioEJogoPlayerWon.Item1);
+                        Console.WriteLine("\nJogo terminado!");
+                    }
+                    break;
+                case MessageType.TankList:
+                    //O primeiro jogador a jogar envia a lista de powers e vida dos tanques para serem passados ao segundo jogador
+                    //Serializar a mensagem para o tipo correto
+                    TankListMessage tankListMessage = JsonConvert.DeserializeObject<TankListMessage>(jsonObj.ToString());
+                    //Encontrar o jogador que moveu
+                    Player jogadorTankList = listaJogadores.Find(p => p.Client == cliente);
+                    Tuple<Player, Game> adversarioEJogoTankList = EncontrarAdversarioEJogo(jogadorTankList);
+                    if (adversarioEJogoTankList.Item1 != null)
+                    {
+                        //Reencaminhar a mensagem de movimento para o adversário
+                        SendMessage(tankListMessage, adversarioEJogoTankList.Item1);
+                    }
+                    break;
                 default:
                     break;
             }
         }
 
-        private static Tuple<Player, Game> EncontrarAdversarioEJogo(Player player)
+        private static Tuple<Player, Game> EncontrarAdversarioEJogo(Player jogador)
         {
             Tuple<Player, Game> adversarioEJogo = null;
-            Player jogador = listaJogadores.Find(p => p.Client == player.Client);
-            if (jogador != null)
-            {
-                //Encontrar o jogo em que este jogador está
-                Game jogo = listaJogos.Find(j => j.currentPlayer == jogador);
-                if (jogo != null)
-                {
-                    //Encontrar o adversário
-                    if (jogo.player1 == jogador)
-                    {
-                        adversarioEJogo = new Tuple<Player, Game>(jogo.player2, jogo);
-                    }
-                    else
-                    {
-                        adversarioEJogo = new Tuple<Player, Game>(jogo.player1, jogo);
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("\nJOGO NÃO ENCONTRADO! Algo de muito errado aconteceu =(");
-                }
-            }
-            else
-            {
-                Console.WriteLine("\nJOGO NÃO ENCONTRADO! Algo de muito errado aconteceu =(");
-            }
+            //Encontrar o adversário
+            adversarioEJogo = new Tuple<Player, Game>(
+                    listaJogadores.Find(j => j.CurrentGame == jogador.CurrentGame && j.Equipa != jogador.Equipa), jogador.CurrentGame);
+            
             return adversarioEJogo;
         }
 
@@ -371,7 +374,11 @@ namespace TankWarServer
                 //Temos um jogador à espera de adversário!
                 waitingPlayer.PlayerStatus = PlayerStatus.Playing;
                 player.PlayerStatus = PlayerStatus.Playing;
-                listaJogos.Add(new Game(waitingPlayer, player));
+                Game jogo = new Game(waitingPlayer, player);
+                listaJogos.Add(jogo);
+                waitingPlayer.CurrentGame = jogo;
+                player.CurrentGame = jogo;
+
                 Console.WriteLine("Novo jogador iniciou um novo jogo!");
 
                 if (player.Equipa == Team.Alliance)
@@ -385,7 +392,7 @@ namespace TankWarServer
                     SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamAlliance), waitingPlayer);
                 }
                 
-                IniciarJogo(waitingPlayer, player);
+                IniciarJogo(waitingPlayer, player, jogo);
             }
             else
             {
@@ -421,7 +428,10 @@ namespace TankWarServer
                         }
                     }
 
-                    listaJogos.Add(new Game(player1, player2));
+                    Game jogo = new Game(player1, player2);
+                    listaJogos.Add(jogo);
+                    player1.CurrentGame = jogo;
+                    player2.CurrentGame = jogo;
 
                     if (player1.Equipa == Team.Alliance)
                     {
@@ -434,7 +444,7 @@ namespace TankWarServer
                         SendMessage(new ControlMessage(MessageType.Control, ControlCommand.TeamCoalition), player1);
                     }
 
-                    IniciarJogo(player1, player2);
+                    IniciarJogo(player1, player2, jogo);
 
                     Console.WriteLine("\nNovo jogo começado entre jogadores solitários.");
                     EscreverStats();
@@ -444,19 +454,21 @@ namespace TankWarServer
             }
         }
 
-        private static void IniciarJogo(Player player1, Player player2)
+        private static void IniciarJogo(Player player1, Player player2, Game jogo)
         {
             player1.PlayerStatus = PlayerStatus.Playing;
             player2.PlayerStatus = PlayerStatus.Playing;
-            if (random.NextDouble() > 0) //Martelado para começar sempre o player2
+            if (random.NextDouble() > 0.5)
             {
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player1);
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player2);
+                jogo.currentPlayer = player1;
             }
             else
             {
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameAdversaryTurn), player1);
                 SendMessage(new ControlMessage(MessageType.Control, ControlCommand.StartGameYourTurn), player2);
+                jogo.currentPlayer = player2;
             }
         }
         #endregion

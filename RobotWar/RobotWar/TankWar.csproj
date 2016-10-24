@@ -137,8 +137,10 @@
     <Compile Include="Network\GameState.cs" />
     <Compile Include="Network\Message.cs" />
     <Compile Include="Network\MessageType.cs" />
+    <Compile Include="Network\PlayerWonMessage.cs" />
     <Compile Include="Network\PowerUpListMessage.cs" />
     <Compile Include="Network\PowerUpMessage.cs" />
+    <Compile Include="Network\TankListMessage.cs" />
     <Compile Include="PowerUp.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Program.cs" />

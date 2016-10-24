@@ -46,7 +46,7 @@ namespace RobotWar
             this.tipo = tipo;
             this.ha_dano = false;
             this.passar_turno = passar_turno;
-            this.tankAtacado = tank;
+            this.tankAtacante = tank;
         }
 
         public void LoadContent(ContentManager content, GraphicsDevice graphic)

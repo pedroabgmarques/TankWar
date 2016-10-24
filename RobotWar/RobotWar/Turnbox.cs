@@ -19,14 +19,16 @@ namespace RobotWar
         float velocidade;
         int n_tanques,n_prontos;
         bool stay_visible;
+        bool lostGame;
         
 
-        public void Initializing(Team equipa, int n_tanques, int n_prontos, bool stay_visible)
+        public void Initializing(Team equipa, int n_tanques, int n_prontos, bool stay_visible, bool lostGame)
         {
             this.activo = true;
             this.transparencia = 1f;
             this.equipa = equipa;
             this.stay_visible = stay_visible;
+            this.lostGame = lostGame;
             if (stay_visible)
             {
                 velocidade = 0f;
@@ -100,7 +102,16 @@ namespace RobotWar
                 if (stay_visible)
                 {
                     spritebatch.DrawString(tahoma_20, "Tanques: " + n_tanques, new Vector2(x + 100, y + 65), Color.Black * transparencia);
-                    spritebatch.DrawString(font, "WINNER!", new Vector2(x + 100, y + 120), Color.Black * transparencia);
+                    transparencia = 1.0f;
+                    if (!lostGame)
+                    {
+                        spritebatch.DrawString(font, "WINNER!", new Vector2(x + 100, y + 120), Color.Black * transparencia);
+                    }
+                    else
+                    {
+                        spritebatch.DrawString(font, "LOSER!", new Vector2(x + 100, y + 120), Color.Black * transparencia);
+                    }
+                    
                 }
                 else
                 {
