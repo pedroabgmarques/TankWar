@@ -29,10 +29,5 @@ namespace TankWar.Network
             this.y = y;
             this.tankID = tank;
         }
-
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }

@@ -24,10 +24,5 @@ namespace TankWar.Network
         public TankListMessage(MessageType msgType, List<Tuple<Team, int, int, int>> listaPowersEVida) : base (msgType){
             this.listaPowersEVida = listaPowersEVida;
         }
-
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }

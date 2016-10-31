@@ -35,11 +35,5 @@ namespace TankWar.Network
             this.dano = dano;
             this.rotacao = rotacao;
         }
-       
-
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }

@@ -18,10 +18,5 @@ namespace TankWar.Network
     {
         public PlayerWonMessage(MessageType msgType)
             : base(msgType) { }
-
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }

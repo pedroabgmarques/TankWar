@@ -20,9 +20,5 @@ namespace TankWar.Network
         public EndTurnMessage(MessageType msgType)
             : base(msgType) { }
 
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }

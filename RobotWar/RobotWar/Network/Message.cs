@@ -16,21 +16,17 @@ namespace TankWar.Network
     /// </summary>
     public class Message
     {
-
         [JsonProperty("msgType")]
         public MessageType msgType { get; set; }
-
         [JsonProperty("msgNumber")]
         public int msgNumber { get; set; }
-
         public Message(MessageType msgType)
         {
             this.msgType = msgType;
         }
-
-        public virtual byte[] ByteMessage()
+        public byte[] ByteMessage()
         {
-            return new byte[] { };
+            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
         }
     }
 }

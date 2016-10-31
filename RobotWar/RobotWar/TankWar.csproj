@@ -134,7 +134,6 @@
     <Compile Include="Network\EndTurnMessage.cs" />
     <Compile Include="Network\GameAttackMessage.cs" />
     <Compile Include="Network\GameMoveMessage.cs" />
-    <Compile Include="Network\GameState.cs" />
     <Compile Include="Network\Message.cs" />
     <Compile Include="Network\MessageType.cs" />
     <Compile Include="Network\PlayerWonMessage.cs" />

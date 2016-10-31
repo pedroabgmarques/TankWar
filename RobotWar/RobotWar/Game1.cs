@@ -63,7 +63,7 @@ namespace RobotWar
 
         #region Settings
         //nº de tanques de cada equipa
-        static int n_tanques = 14;
+        static int n_tanques = 8;
         //altura da grelha
         static int altura_grelha = 10;
         //vida dos tanques
@@ -125,7 +125,7 @@ namespace RobotWar
 
 
             //Network
-            ConnectToServer("cyclesrenderer.ddns.net", 7777);
+            ConnectToServer("localhost", 7777);
 
             base.Initialize();
         }

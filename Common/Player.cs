@@ -19,7 +19,6 @@ namespace Common
     {
 
         private int msgCounter;
-
         public int MsgCounter
         {
             get 

@@ -184,7 +184,7 @@ namespace TankWarServer
 
             Console.WriteLine("\nMensagem de " + cliente .Client.RemoteEndPoint+ ": " + mensagem);
 
-            //Serialziar a mensagem para um objeto JSON para lermos o tipo de mensagem
+            //Serializar a mensagem para um objeto JSON para lermos o tipo de mensagem
             JObject jsonObj = JsonConvert.DeserializeObject<JObject>(mensagem);
             int intMsgType = (int)jsonObj["msgType"];
             MessageType msgType = (MessageType)intMsgType;
@@ -312,6 +312,7 @@ namespace TankWarServer
                 Console.WriteLine("Erro no envio de mensagem para cliente " + tcpClient.Client.RemoteEndPoint.ToString());
             }
         }
+
         #endregion
 
         #region MatchMaking / Lobby

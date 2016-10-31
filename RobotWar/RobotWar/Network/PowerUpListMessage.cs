@@ -22,10 +22,5 @@ namespace TankWar.Network
         {
             this.listaPowerUps = listaPowerUps;
         }
-
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }

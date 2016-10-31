@@ -24,10 +24,5 @@ namespace TankWar.Network
         {
             this.command = command;
         }
-
-        public override byte[] ByteMessage()
-        {
-            return Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(this));
-        }
     }
 }
